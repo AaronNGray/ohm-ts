@@ -1,0 +1,17 @@
+#!/bin/bash
+
+# Script to version the ohm-js package.
+
+set -e
+
+if [ "$(git status --porcelain | grep -v '??')" != "" ]; then
+  echo "Error: git working directory not clean — run 'git status' for more info."
+  exit 1
+fi
+
+echo "👫  Updating the list of contributors..."
+json -I -f "package.json" -e "this.contributors=[$(./scripts/get-contributors)]"
+if [ "$(git status --porcelain | grep -v '??')" != "" ]; then
+  git add package.json
+  git commit -am "Update contributors"
+fi
