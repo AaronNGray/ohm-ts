@@ -45,8 +45,8 @@ export default class MatchResult {
   }
 
   matcher:Matcher;
-  input;
-  startExpr;
+  input:string;
+  startExpr:PExpr;
   _cst;
   _cstOffset;
   _rightmostFailurePosition;

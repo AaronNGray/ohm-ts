@@ -1,6 +1,7 @@
 import {abstract, isSyntactic} from './common.js';
 import * as errors from './errors.js';
 import * as pexprs from './pexprs-main.js';
+import PExpr from './pexprs-main.js';
 import * as util from './util.js';
 
 let BuiltInRules;
@@ -15,12 +16,12 @@ util.awaitBuiltInRules(g => {
 
 let lexifyCount;
 
-pexprs.PExpr.prototype.assertAllApplicationsAreValid = function (ruleName, grammar) {
+PExpr.prototype.assertAllApplicationsAreValid = function (ruleName, grammar) {
   lexifyCount = 0;
   this._assertAllApplicationsAreValid(ruleName, grammar);
 };
 
-pexprs.PExpr.prototype._assertAllApplicationsAreValid = abstract(
+PExpr.prototype._assertAllApplicationsAreValid = abstract(
   '_assertAllApplicationsAreValid'
 );
 

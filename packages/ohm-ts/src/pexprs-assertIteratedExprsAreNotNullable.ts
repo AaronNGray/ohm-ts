@@ -1,12 +1,13 @@
 import {abstract} from './common.js';
 import * as errors from './errors.js';
 import * as pexprs from './pexprs-main.js';
+import PExpr from './pexprs-main.js';
 
 // --------------------------------------------------------------------
 // Operations
 // --------------------------------------------------------------------
 
-pexprs.PExpr.prototype.assertIteratedExprsAreNotNullable = abstract(
+PExpr.prototype.assertIteratedExprsAreNotNullable = abstract(
   'assertIteratedExprsAreNotNullable'
 );
 

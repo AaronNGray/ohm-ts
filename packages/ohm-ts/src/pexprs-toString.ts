@@ -1,5 +1,6 @@
 import {abstract} from './common.js';
 import * as pexprs from './pexprs-main.js';
+import PExpr from './pexprs-main.js';
 
 // --------------------------------------------------------------------
 // Operations
@@ -12,57 +13,57 @@ import * as pexprs from './pexprs-main.js';
   ~"b" "a" and "a" are interchangeable in any grammar,
   both in terms of the languages they accept and their arities.
 */
-pexprs.PExpr.prototype.toString = abstract('toString');
+PExpr.prototype.toString = abstract('toString');
 
-pexprs.any.toString = function () {
+pexprs.any.toString = function ():string {
   return 'any';
 };
 
-pexprs.end.toString = function () {
+pexprs.end.toString = function ():string {
   return 'end';
 };
 
-pexprs.Terminal.prototype.toString = function () {
+pexprs.Terminal.prototype.toString = function ():string {
   return JSON.stringify(this.obj);
 };
 
-pexprs.Range.prototype.toString = function () {
+pexprs.Range.prototype.toString = function ():string {
   return JSON.stringify(this.from) + '..' + JSON.stringify(this.to);
 };
 
-pexprs.Param.prototype.toString = function () {
+pexprs.Param.prototype.toString = function ():string {
   return '$' + this.index;
 };
 
-pexprs.Lex.prototype.toString = function () {
+pexprs.Lex.prototype.toString = function ():string {
   return '#(' + this.expr.toString() + ')';
 };
 
-pexprs.Alt.prototype.toString = function () {
+pexprs.Alt.prototype.toString = function ():string {
   return this.terms.length === 1
     ? this.terms[0].toString()
     : '(' + this.terms.map(term => term.toString()).join(' | ') + ')';
 };
 
-pexprs.Seq.prototype.toString = function () {
+pexprs.Seq.prototype.toString = function ():string {
   return this.factors.length === 1
     ? this.factors[0].toString()
     : '(' + this.factors.map(factor => factor.toString()).join(' ') + ')';
 };
 
-pexprs.Iter.prototype.toString = function () {
+pexprs.Iter.prototype.toString = function ():string {
   return this.expr + this.operator;
 };
 
-pexprs.Not.prototype.toString = function () {
+pexprs.Not.prototype.toString = function ():string {
   return '~' + this.expr;
 };
 
-pexprs.Lookahead.prototype.toString = function () {
+pexprs.Lookahead.prototype.toString = function ():string {
   return '&' + this.expr;
 };
 
-pexprs.Apply.prototype.toString = function () {
+pexprs.Apply.prototype.toString = function ():string {
   if (this.args.length > 0) {
     const ps = this.args.map(arg => arg.toString());
     return this.ruleName + '<' + ps.join(',') + '>';
@@ -71,6 +72,6 @@ pexprs.Apply.prototype.toString = function () {
   }
 };
 
-pexprs.UnicodeChar.prototype.toString = function () {
+pexprs.UnicodeChar.prototype.toString = function ():string {
   return '\\p{' + this.categoryOrProp + '}';
 };

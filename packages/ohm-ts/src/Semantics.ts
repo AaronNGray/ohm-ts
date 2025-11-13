@@ -1,8 +1,12 @@
-import {InputStream} from './InputStream.js';
-import {IterationNode} from './nodes.js';
-import {MatchResult} from './MatchResult.js';
+import InputStream from './InputStream.js';
+import Interval from './Interval.js';
+import Node, {IterationNode} from './nodes.js';
+import MatchResult from './MatchResult.js';
+import Grammar from './Grammar.js';
 import * as common from './common.js';
+import {assert} from './common.js';
 import * as errors from './errors.js';
+import Failure from './Failure.js';
 import * as util from './util.js';
 
 // --------------------------------------------------------------------
@@ -11,7 +15,7 @@ import * as util from './util.js';
 
 const globalActionStack = [];
 
-const hasOwnProperty = (x, prop) => Object.prototype.hasOwnProperty.call(x, prop);
+const hasOwnProperty = (x:object, prop:string) => Object.prototype.hasOwnProperty.call(x, prop);
 
 // ----------------- Wrappers -----------------
 
@@ -23,7 +27,7 @@ const hasOwnProperty = (x, prop) => Object.prototype.hasOwnProperty.call(x, prop
 // variables is the responsibility of the constructor of each Semantics-specific subclass of
 // `Wrapper`.
 class Wrapper {
-  constructor(node, sourceInterval, baseInterval) {
+  constructor(node:Node, sourceInterval:Interval, baseInterval:Interval) {
     this._node = node;
     this.source = sourceInterval;
 
@@ -32,12 +36,20 @@ class Wrapper {
     this._baseInterval = baseInterval;
 
     if (node.isNonterminal()) {
-      common.assert(sourceInterval === baseInterval);
+      assert(sourceInterval === baseInterval);
     }
     this._childWrappers = [];
   }
 
-  _forgetMemoizedResultFor(attributeName) {
+  _node:Node;
+  source:Interval;
+  _baseInterval:Interval;
+  _childWrappers:Wrapper[];
+  _semantics:any;
+
+  [key: string]: any;
+
+  _forgetMemoizedResultFor(attributeName:string):void {
     // Remove the memoized attribute from the cstNode and all its children.
     delete this._node[this._semantics.attributeKeys[attributeName]];
     this.children.forEach(child => {
@@ -47,14 +59,14 @@ class Wrapper {
 
   // Returns the wrapper of the specified child node. Child wrappers are created lazily and
   // cached in the parent wrapper's `_childWrappers` instance variable.
-  child(idx) {
+  child(idx:number):Wrapper|undefined {
     if (!(0 <= idx && idx < this._node.numChildren())) {
       // TODO: Consider throwing an exception here.
       return undefined;
     }
     let childWrapper = this._childWrappers[idx];
     if (!childWrapper) {
-      const childNode = this._node.childAt(idx);
+      const childNode:Node = this._node.childAt(idx)!;
       const offset = this._node.childOffsets[idx];
 
       const source = this._baseInterval.subInterval(offset, childNode.matchLength);
@@ -66,7 +78,7 @@ class Wrapper {
 
   // Returns an array containing the wrappers of all of the children of the node associated
   // with this wrapper.
-  _children() {
+  _children():Wrapper[] {
     // Force the creation of all child wrappers
     for (let idx = 0; idx < this._node.numChildren(); idx++) {
       this.child(idx);
@@ -76,43 +88,43 @@ class Wrapper {
 
   // Returns `true` if the CST node associated with this wrapper corresponds to an iteration
   // expression, i.e., a Kleene-*, Kleene-+, or an optional. Returns `false` otherwise.
-  isIteration() {
+  isIteration():boolean {
     return this._node.isIteration();
   }
 
   // Returns `true` if the CST node associated with this wrapper is a terminal node, `false`
   // otherwise.
-  isTerminal() {
+  isTerminal():boolean {
     return this._node.isTerminal();
   }
 
   // Returns `true` if the CST node associated with this wrapper is a nonterminal node, `false`
   // otherwise.
-  isNonterminal() {
+  isNonterminal():boolean {
     return this._node.isNonterminal();
   }
 
   // Returns `true` if the CST node associated with this wrapper is a nonterminal node
   // corresponding to a syntactic rule, `false` otherwise.
-  isSyntactic() {
+  isSyntactic():boolean {
     return this.isNonterminal() && this._node.isSyntactic();
   }
 
   // Returns `true` if the CST node associated with this wrapper is a nonterminal node
   // corresponding to a lexical rule, `false` otherwise.
-  isLexical() {
+  isLexical():boolean {
     return this.isNonterminal() && this._node.isLexical();
   }
 
   // Returns `true` if the CST node associated with this wrapper is an iterator node
   // having either one or no child (? operator), `false` otherwise.
   // Otherwise, throws an exception.
-  isOptional() {
+  isOptional():boolean {
     return this._node.isOptional();
   }
 
   // Create a new _iter wrapper in the same semantics as this wrapper.
-  iteration(optChildWrappers) {
+  iteration(optChildWrappers:Wrapper[]):Wrapper {
     const childWrappers = optChildWrappers || [];
 
     const childNodes = childWrappers.map(c => c._node);
@@ -124,25 +136,26 @@ class Wrapper {
   }
 
   // Returns an array containing the children of this CST node.
-  get children() {
+  get children():Node[] {
     return this._children();
   }
 
   // Returns the name of grammar rule that created this CST node.
-  get ctorName() {
+  get ctorName():string {
     return this._node.ctorName;
   }
 
   // Returns the number of children of this CST node.
-  get numChildren() {
+  get numChildren():number {
     return this._node.numChildren();
   }
 
   // Returns the contents of the input stream consumed by this CST node.
-  get sourceString() {
+  get sourceString():string {
     return this.source.contents;
   }
 }
+
 
 // ----------------- Semantics -----------------
 
@@ -152,8 +165,8 @@ class Wrapper {
 // recursive. This constructor should not be called directly except from
 // `Semantics.createSemantics`. The normal ways to create a Semantics, given a grammar 'g', are
 // `g.createSemantics()` and `g.extendSemantics(parentSemantics)`.
-export class Semantics {
-  constructor(grammar, superSemantics) {
+export default class Semantics {
+  constructor(grammar:Grammar, superSemantics:Semantics) {
     const self = this;
     this.grammar = grammar;
     this.checkedActionDicts = false;
@@ -164,7 +177,7 @@ export class Semantics {
     // the `execute` method is called with the correct (most specific) semantics object as an
     // argument.
     this.Wrapper = class extends (superSemantics ? superSemantics.Wrapper : Wrapper) {
-      constructor(node, sourceInterval, baseInterval) {
+      constructor(node:Node, sourceInterval:Interval, baseInterval:Interval) {
         super(node, sourceInterval, baseInterval);
         self.checkActionDictsIfHaventAlready();
         this._semantics = self;
@@ -205,11 +218,158 @@ export class Semantics {
     }
   }
 
-  toString() {
+  // Creates a new Semantics instance for `grammar`, inheriting operations and attributes from
+  // `optSuperSemantics`, if it is specified. Returns a function that acts as a proxy for the new
+  // Semantics instance. When that function is invoked with a CST node as an argument, it returns
+  // a wrapper for that node which gives access to the operations and attributes provided by this
+  // semantics.
+  static createSemantics(grammar:Grammar, optSuperSemantics?:Semantics):Semantics {
+    const s = new Semantics(
+      grammar,
+      optSuperSemantics !== undefined
+        ? optSuperSemantics
+        : Semantics.BuiltInSemantics._getSemantics()
+    );
+
+    // To enable clients to invoke a semantics like a function, return a function that acts as a proxy
+    // for `s`, which is the real `Semantics` instance.
+    const proxy = function ASemantics(matchResult:MatchResult):Semantics {
+      if (!(matchResult instanceof MatchResult)) {
+        throw new TypeError(
+          'Semantics expected a MatchResult, but got ' +
+            common.unexpectedObjToString(matchResult)
+        );
+      }
+      if (matchResult.failed()) {
+        throw new TypeError('cannot apply Semantics to ' + matchResult.toString());
+      }
+
+      const cst = matchResult._cst;
+      if (cst.grammar !== grammar) {
+        throw new Error(
+          "Cannot use a MatchResult from grammar '" +
+            cst.grammar.name +
+            "' with a semantics for '" +
+            grammar.name +
+            "'"
+        );
+      }
+      const inputStream = new InputStream(matchResult.input);
+      return s.wrap(cst, inputStream.interval(matchResult._cstOffset, matchResult.input.length));
+    };
+
+    // Forward public methods from the proxy to the semantics instance.
+    proxy.addOperation = function (signature, actionDict) {
+      s.addOperationOrAttribute('operation', signature, actionDict);
+      return proxy;
+    };
+    proxy.extendOperation = function (name, actionDict) {
+      s.extendOperationOrAttribute('operation', name, actionDict);
+      return proxy;
+    };
+    proxy.addAttribute = function (name, actionDict) {
+      s.addOperationOrAttribute('attribute', name, actionDict);
+      return proxy;
+    };
+    proxy.extendAttribute = function (name, actionDict) {
+      s.extendOperationOrAttribute('attribute', name, actionDict);
+      return proxy;
+    };
+    proxy._getActionDict = function (operationOrAttributeName:string) {
+      const action =
+        s.operations[operationOrAttributeName] || s.attributes[operationOrAttributeName];
+      if (!action) {
+        throw new Error(
+          '"' +
+            operationOrAttributeName +
+            '" is not a valid operation or attribute ' +
+            'name in this semantics for "' +
+            grammar.name +
+            '"'
+        );
+      }
+      return action.actionDict;
+    };
+    proxy._remove = function (operationOrAttributeName:AttributeName|Operation) {
+      let semantic;
+      if (operationOrAttributeName in s.operations) {
+        semantic = s.operations[operationOrAttributeName];
+        delete s.operations[operationOrAttributeName];
+      } else if (operationOrAttributeName in s.attributes) {
+        semantic = s.attributes[operationOrAttributeName];
+        delete s.attributes[operationOrAttributeName];
+      }
+      delete s.Wrapper.prototype[operationOrAttributeName];
+      return semantic;
+    };
+    proxy.getOperationNames = function () {
+      return Object.keys(s.operations);
+    };
+    proxy.getAttributeNames = function () {
+      return Object.keys(s.attributes);
+    };
+    proxy.getGrammar = function () {
+      return s.grammar;
+    };
+    proxy.toRecipe = function (semanticsOnly:boolean) {
+      return s.toRecipe(semanticsOnly);
+    };
+
+    // Make the proxy's toString() work.
+    proxy.toString = s.toString.bind(s);
+
+    // Returns the semantics for the proxy.
+    proxy._getSemantics = function () {
+      return s;
+    };
+
+    return proxy;
+  }
+
+  static prototypeGrammar:Grammar;
+  static prototypeGrammarSemantics:Semantics;
+
+  static actions = {
+    empty() {
+      return super.iteration(); // ??? super
+    },
+    nonEmpty(first:Node, _, rest:Node) {
+      return super.iteration([first].concat(rest.children));
+    },
+    self(..._children:Node[]) {   // ???
+      return this;
+    },
+  };
+
+  static BuiltInSemantics = Semantics.createSemantics(Grammar.BuiltInRules, null).addOperation(
+    'asIteration',
+    {
+      emptyListOf: Semantics.actions.empty,
+      nonemptyListOf: Semantics.actions.nonEmpty,
+      EmptyListOf: Semantics.actions.empty,
+      NonemptyListOf: Semantics.actions.nonEmpty,
+      _iter: Semantics.actions.self,
+    }
+  );
+
+  grammar:Grammar;
+  super:Semantics;
+  operations:any; // !!!
+  attributes:any; // !!!
+  attributeKeys:string[]; // !!!
+  Wrapper:any;
+
+  actionDict: {[key: string]: any} = {};
+
+  _semantics?: Semantics;
+
+  [key: string]: any;
+
+  toString():string {
     return '[semantics for ' + this.grammar.name + ']';
   }
 
-  checkActionDictsIfHaventAlready() {
+  checkActionDictsIfHaventAlready():void {
     if (!this.checkedActionDicts) {
       this.checkActionDicts();
       this.checkedActionDicts = true;
@@ -219,20 +379,18 @@ export class Semantics {
   // Checks that the action dictionaries for all operations and attributes in this semantics,
   // including the ones that were inherited from the super-semantics, agree with the grammar.
   // Throws an exception if one or more of them doesn't.
-  checkActionDicts() {
-    let name;
-
-    for (name in this.operations) {
+  checkActionDicts():void {
+    for (let name in this.operations) {
       this.operations[name].checkActionDict(this.grammar);
     }
 
-    for (name in this.attributes) {
+    for (let name in this.attributes) {
       this.attributes[name].checkActionDict(this.grammar);
     }
   }
 
-  toRecipe(semanticsOnly) {
-    function hasSuperSemantics(s) {
+  toRecipe(semanticsOnly:boolean = false) {
+    function hasSuperSemantics(s:Semantics) {
       return s.super !== Semantics.BuiltInSemantics._getSemantics();
     }
 
@@ -270,7 +428,7 @@ export class Semantics {
         }
         str += '\n    .' + method + '(' + JSON.stringify(signature) + ', {';
 
-        const srcArray = [];
+        const srcArray:string[] = [];
         Object.keys(actionDict).forEach(actionName => {
           if (actionDict[actionName] !== builtInDefault) {
             let source = actionDict[actionName].toString().trim();
@@ -303,7 +461,7 @@ export class Semantics {
     return str;
   }
 
-  addOperationOrAttribute(type, signature, actionDict) {
+  addOperationOrAttribute(type:string, signature:string, actionDict:any) {
     const typePlural = type + 's';
 
     const parsedNameAndFormalArgs = parseSignature(signature, type);
@@ -317,7 +475,7 @@ export class Semantics {
     // Create the action dictionary for this operation / attribute that contains a `_default` action
     // which defines the default behavior of iteration, terminal, and non-terminal nodes...
     const builtInDefault = newDefaultAction(type, name, doIt);
-    const realActionDict = {_default: builtInDefault};
+    const realActionDict:Record<string,(...children:any[]) => any> = {_default: builtInDefault};
     // ... and add in the actions supplied by the programmer, which may override some or all of the
     // default ones.
     Object.keys(actionDict).forEach(name => {
@@ -335,10 +493,12 @@ export class Semantics {
 
     this[typePlural][name] = entry;
 
-    function doIt(...args) {
+    const _this = this;
+
+    function doIt(...args:object[]) {
       // Dispatch to most specific version of this operation / attribute -- it may have been
       // overridden by a sub-semantics.
-      const thisThing = this._semantics[typePlural][name];
+      const thisThing = _this._semantics![typePlural][name]; // ??? !
 
       // Check that the caller passed the correct number of arguments.
       if (arguments.length !== thisThing.formals.length) {
@@ -363,20 +523,20 @@ export class Semantics {
         argsObj[formal] = val;
       }
 
-      const oldArgs = this.args;
-      this.args = argsObj;
-      const ans = thisThing.execute(this._semantics, this);
-      this.args = oldArgs;
+      const oldArgs = _this.args;
+      _this.args = argsObj;
+      const ans = thisThing.execute(_this._semantics, _this);
+      _this.args = oldArgs;
       return ans;
     }
 
     if (type === 'operation') {
-      this.Wrapper.prototype[name] = doIt;
-      this.Wrapper.prototype[name].toString = function () {
+      this.Wrapper[name] = doIt;
+      this.Wrapper[name].toString = function () {
         return '[' + name + ' operation]';
       };
     } else {
-      Object.defineProperty(this.Wrapper.prototype, name, {
+      Object.defineProperty(this.Wrapper, name, {
         get: doIt,
         configurable: true, // So the property can be deleted.
       });
@@ -386,7 +546,7 @@ export class Semantics {
     }
   }
 
-  extendOperationOrAttribute(type, name, actionDict) {
+  extendOperationOrAttribute(type:string, name:string, actionDict:any) {
     const typePlural = type + 's';
 
     // Make sure that `name` really is just a name, i.e., that it doesn't also contain formals.
@@ -426,7 +586,7 @@ export class Semantics {
     this[typePlural][name].checkActionDict(this.grammar);
   }
 
-  assertNewName(name, type) {
+  assertNewName(name:string, type:string) {
     if (hasOwnProperty(Wrapper.prototype, name)) {
       throw new Error('Cannot add ' + type + " '" + name + "': that's a reserved name");
     }
@@ -444,13 +604,13 @@ export class Semantics {
 
   // Returns a wrapper for the given CST `node` in this semantics.
   // If `node` is already a wrapper, returns `node` itself.  // TODO: why is this needed?
-  wrap(node, source, optBaseInterval) {
+  wrap(node:Node, source:Interval, optBaseInterval?:Interval):Wrapper {
     const baseInterval = optBaseInterval || source;
-    return node instanceof this.Wrapper ? node : new this.Wrapper(node, source, baseInterval);
+    return node instanceof Wrapper ? node : new this.Wrapper(node, source, baseInterval);  // ??? this.Wrapper
   }
 }
 
-function parseSignature(signature, type) {
+function parseSignature(signature:string, type:string) {
   if (!Semantics.prototypeGrammar) {
     // The Operations and Attributes grammar won't be available while Ohm is loading,
     // but we can get away the following simplification b/c none of the operations
@@ -470,7 +630,7 @@ function parseSignature(signature, type) {
     throw new Error(r.message);
   }
 
-  return Semantics.prototypeGrammarSemantics(r).parse();
+  return Semantics.prototypeGrammarSemantics(r).parse();    // Semantics is not callable, and no parse() method.
 }
 
 function newDefaultAction(type, name, doIt) {
@@ -493,113 +653,6 @@ function newDefaultAction(type, name, doIt) {
   };
 }
 
-// Creates a new Semantics instance for `grammar`, inheriting operations and attributes from
-// `optSuperSemantics`, if it is specified. Returns a function that acts as a proxy for the new
-// Semantics instance. When that function is invoked with a CST node as an argument, it returns
-// a wrapper for that node which gives access to the operations and attributes provided by this
-// semantics.
-Semantics.createSemantics = function (grammar, optSuperSemantics) {
-  const s = new Semantics(
-    grammar,
-    optSuperSemantics !== undefined
-      ? optSuperSemantics
-      : Semantics.BuiltInSemantics._getSemantics()
-  );
-
-  // To enable clients to invoke a semantics like a function, return a function that acts as a proxy
-  // for `s`, which is the real `Semantics` instance.
-  const proxy = function ASemantics(matchResult) {
-    if (!(matchResult instanceof MatchResult)) {
-      throw new TypeError(
-        'Semantics expected a MatchResult, but got ' +
-          common.unexpectedObjToString(matchResult)
-      );
-    }
-    if (matchResult.failed()) {
-      throw new TypeError('cannot apply Semantics to ' + matchResult.toString());
-    }
-
-    const cst = matchResult._cst;
-    if (cst.grammar !== grammar) {
-      throw new Error(
-        "Cannot use a MatchResult from grammar '" +
-          cst.grammar.name +
-          "' with a semantics for '" +
-          grammar.name +
-          "'"
-      );
-    }
-    const inputStream = new InputStream(matchResult.input);
-    return s.wrap(cst, inputStream.interval(matchResult._cstOffset, matchResult.input.length));
-  };
-
-  // Forward public methods from the proxy to the semantics instance.
-  proxy.addOperation = function (signature, actionDict) {
-    s.addOperationOrAttribute('operation', signature, actionDict);
-    return proxy;
-  };
-  proxy.extendOperation = function (name, actionDict) {
-    s.extendOperationOrAttribute('operation', name, actionDict);
-    return proxy;
-  };
-  proxy.addAttribute = function (name, actionDict) {
-    s.addOperationOrAttribute('attribute', name, actionDict);
-    return proxy;
-  };
-  proxy.extendAttribute = function (name, actionDict) {
-    s.extendOperationOrAttribute('attribute', name, actionDict);
-    return proxy;
-  };
-  proxy._getActionDict = function (operationOrAttributeName) {
-    const action =
-      s.operations[operationOrAttributeName] || s.attributes[operationOrAttributeName];
-    if (!action) {
-      throw new Error(
-        '"' +
-          operationOrAttributeName +
-          '" is not a valid operation or attribute ' +
-          'name in this semantics for "' +
-          grammar.name +
-          '"'
-      );
-    }
-    return action.actionDict;
-  };
-  proxy._remove = function (operationOrAttributeName) {
-    let semantic;
-    if (operationOrAttributeName in s.operations) {
-      semantic = s.operations[operationOrAttributeName];
-      delete s.operations[operationOrAttributeName];
-    } else if (operationOrAttributeName in s.attributes) {
-      semantic = s.attributes[operationOrAttributeName];
-      delete s.attributes[operationOrAttributeName];
-    }
-    delete s.Wrapper.prototype[operationOrAttributeName];
-    return semantic;
-  };
-  proxy.getOperationNames = function () {
-    return Object.keys(s.operations);
-  };
-  proxy.getAttributeNames = function () {
-    return Object.keys(s.attributes);
-  };
-  proxy.getGrammar = function () {
-    return s.grammar;
-  };
-  proxy.toRecipe = function (semanticsOnly) {
-    return s.toRecipe(semanticsOnly);
-  };
-
-  // Make the proxy's toString() work.
-  proxy.toString = s.toString.bind(s);
-
-  // Returns the semantics for the proxy.
-  proxy._getSemantics = function () {
-    return s;
-  };
-
-  return proxy;
-};
 
 // ----------------- Operation -----------------
 
@@ -609,20 +662,22 @@ Semantics.createSemantics = function (grammar, optSuperSemantics) {
 // `actionDict`. See `Operation.prototype.execute` for details of how a CST node's matching semantic
 // action is found.
 class Operation {
-  constructor(name, formals, actionDict, builtInDefault) {
+  constructor(name:string, formals, actionDict, builtInDefault) {
     this.name = name;
     this.formals = formals;
     this.actionDict = actionDict;
     this.builtInDefault = builtInDefault;
   }
 
-  checkActionDict(grammar) {
+  name:string;
+
+  checkActionDict(grammar:Grammar) {
     grammar._checkTopDownActionDict(this.typeName, this.name, this.actionDict);
   }
 
   // Execute this operation on the CST node associated with `nodeWrapper` in the context of the
   // given Semantics instance.
-  execute(semantics, nodeWrapper) {
+  execute(semantics:Semantics, nodeWrapper:Wrapper) {
     try {
       // Look for a semantic action whose name matches the node's constructor name, which is either
       // the name of a rule in the grammar, or '_terminal' (for a terminal node), or '_iter' (for an
@@ -661,11 +716,11 @@ Operation.prototype.typeName = 'operation';
 // Attributes are Operations whose results are memoized. This means that, for any given semantics,
 // the semantic action for a CST node will be invoked no more than once.
 class Attribute extends Operation {
-  constructor(name, actionDict, builtInDefault) {
+  constructor(name:string, actionDict, builtInDefault) {
     super(name, [], actionDict, builtInDefault);
   }
 
-  execute(semantics, nodeWrapper) {
+  execute(semantics:Semantics, nodeWrapper:Wrapper) {
     const node = nodeWrapper._node;
     const key = semantics.attributeKeys[this.name];
     if (!hasOwnProperty(node, key)) {

@@ -1,5 +1,6 @@
 import {abstract} from './common.js';
 import * as pexprs from './pexprs-main.js';
+import PExpr from './pexprs-main.js';
 
 // --------------------------------------------------------------------
 // Operations
@@ -8,7 +9,7 @@ import * as pexprs from './pexprs-main.js';
 /*
   Return true if we should skip spaces preceding this expression in a syntactic context.
 */
-pexprs.PExpr.prototype.allowsSkippingPrecedingSpace = abstract('allowsSkippingPrecedingSpace');
+PExpr.prototype.allowsSkippingPrecedingSpace = abstract('allowsSkippingPrecedingSpace');
 
 /*
   Generally, these are all first-order expressions and (with the exception of Apply)

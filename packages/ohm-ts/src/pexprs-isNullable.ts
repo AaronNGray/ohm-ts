@@ -1,16 +1,17 @@
 import {abstract} from './common.js';
 import * as pexprs from './pexprs-main.js';
+import PExpr from './pexprs-main.js';
 
 // --------------------------------------------------------------------
 // Operations
 // --------------------------------------------------------------------
 
 // Returns `true` if this parsing expression may accept without consuming any input.
-pexprs.PExpr.prototype.isNullable = function (grammar) {
+PExpr.prototype.isNullable = function (grammar) {
   return this._isNullable(grammar, Object.create(null));
 };
 
-pexprs.PExpr.prototype._isNullable = abstract('_isNullable');
+PExpr.prototype._isNullable = abstract('_isNullable');
 
 pexprs.any._isNullable =
   pexprs.Range.prototype._isNullable =
@@ -56,7 +57,7 @@ pexprs.Lex.prototype._isNullable = function (grammar, memo) {
 };
 
 pexprs.Apply.prototype._isNullable = function (grammar, memo) {
-  const key = this.toMemoKey();
+  const key = this.toMemoKey()!;  // !!! !
   if (!Object.prototype.hasOwnProperty.call(memo, key)) {
     const {body} = grammar.rules[this.ruleName];
     const inlined = body.substituteParams(this.args);

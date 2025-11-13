@@ -1,15 +1,16 @@
 import {abstract, copyWithoutDuplicates} from './common.js';
 import * as pexprs from './pexprs-main.js';
+import PExpr from './pexprs-main.js';
 
 // --------------------------------------------------------------------
 // Private stuff
 // --------------------------------------------------------------------
 
-function isRestrictedJSIdentifier(str) {
+function isRestrictedJSIdentifier(str:string):boolean {
   return /^[a-zA-Z_$][0-9a-zA-Z_$]*$/.test(str);
 }
 
-function resolveDuplicatedNames(argumentNameList) {
+function resolveDuplicatedNames(argumentNameList:string[]) {
   // `count` is used to record the number of times each argument name occurs in the list,
   // this is useful for checking duplicated argument name. It maps argument names to ints.
   const count = Object.create(null);
@@ -63,17 +64,17 @@ function resolveDuplicatedNames(argumentNameList) {
   * e.getArity() === e.toArgumentNameList(1).length
 */
 // function(firstArgIndex, noDupCheck) { ... }
-pexprs.PExpr.prototype.toArgumentNameList = abstract('toArgumentNameList');
+PExpr.prototype.toArgumentNameList = abstract('toArgumentNameList');
 
-pexprs.any.toArgumentNameList = function (firstArgIndex, noDupCheck) {
+pexprs.any.toArgumentNameList = function (firstArgIndex:number, noDupCheck:boolean):string[] {
   return ['any'];
 };
 
-pexprs.end.toArgumentNameList = function (firstArgIndex, noDupCheck) {
+pexprs.end.toArgumentNameList = function (firstArgIndex:number, noDupCheck:boolean):string[] {
   return ['end'];
 };
 
-pexprs.Terminal.prototype.toArgumentNameList = function (firstArgIndex, noDupCheck) {
+pexprs.Terminal.prototype.toArgumentNameList = function (firstArgIndex:number, noDupCheck:boolean):string[] {
   if (typeof this.obj === 'string' && /^[_a-zA-Z0-9]+$/.test(this.obj)) {
     // If this terminal is a valid suffix for a JS identifier, just prepend it with '_'
     return ['_' + this.obj];
@@ -83,7 +84,7 @@ pexprs.Terminal.prototype.toArgumentNameList = function (firstArgIndex, noDupChe
   }
 };
 
-pexprs.Range.prototype.toArgumentNameList = function (firstArgIndex, noDupCheck) {
+pexprs.Range.prototype.toArgumentNameList = function (firstArgIndex:number, noDupCheck:boolean):string[] {
   let argName = this.from + '_to_' + this.to;
   // If the `argName` is not valid then try to prepend a `_`.
   if (!isRestrictedJSIdentifier(argName)) {
@@ -96,10 +97,10 @@ pexprs.Range.prototype.toArgumentNameList = function (firstArgIndex, noDupCheck)
   return [argName];
 };
 
-pexprs.Alt.prototype.toArgumentNameList = function (firstArgIndex, noDupCheck) {
+pexprs.Alt.prototype.toArgumentNameList = function (firstArgIndex:number, noDupCheck:boolean):string[] {
   // `termArgNameLists` is an array of arrays where each row is the
   // argument name list that corresponds to a term in this alternation.
-  const termArgNameLists = this.terms.map(term =>
+  const termArgNameLists = this.terms.map((term:PExpr) =>
     term.toArgumentNameList(firstArgIndex, true)
   );
 
@@ -120,7 +121,7 @@ pexprs.Alt.prototype.toArgumentNameList = function (firstArgIndex, noDupCheck) {
   return argumentNameList;
 };
 
-pexprs.Seq.prototype.toArgumentNameList = function (firstArgIndex, noDupCheck) {
+pexprs.Seq.prototype.toArgumentNameList = function (firstArgIndex:number, noDupCheck:boolean):string[] {
   // Generate the argument name list, without worrying about duplicates.
   let argumentNameList = [];
   this.factors.forEach(factor => {
@@ -136,10 +137,10 @@ pexprs.Seq.prototype.toArgumentNameList = function (firstArgIndex, noDupCheck) {
   return argumentNameList;
 };
 
-pexprs.Iter.prototype.toArgumentNameList = function (firstArgIndex, noDupCheck) {
+pexprs.Iter.prototype.toArgumentNameList = function (firstArgIndex:number, noDupCheck:boolean):string[] {
   const argumentNameList = this.expr
     .toArgumentNameList(firstArgIndex, noDupCheck)
-    .map(exprArgumentString =>
+    .map((exprArgumentString:string) =>
       exprArgumentString[exprArgumentString.length - 1] === 's'
         ? exprArgumentString + 'es'
         : exprArgumentString + 's'
@@ -150,18 +151,18 @@ pexprs.Iter.prototype.toArgumentNameList = function (firstArgIndex, noDupCheck) 
   return argumentNameList;
 };
 
-pexprs.Opt.prototype.toArgumentNameList = function (firstArgIndex, noDupCheck) {
+pexprs.Opt.prototype.toArgumentNameList = function (firstArgIndex:number, noDupCheck:boolean):string[] {
   return this.expr.toArgumentNameList(firstArgIndex, noDupCheck).map(argName => {
     return 'opt' + argName[0].toUpperCase() + argName.slice(1);
   });
 };
 
-pexprs.Not.prototype.toArgumentNameList = function (firstArgIndex, noDupCheck) {
+pexprs.Not.prototype.toArgumentNameList = function (firstArgIndex:number, noDupCheck:boolean):string[] {
   return [];
 };
 
 pexprs.Lookahead.prototype.toArgumentNameList = pexprs.Lex.prototype.toArgumentNameList =
-  function (firstArgIndex, noDupCheck) {
+  function (firstArgIndex:number, noDupCheck:boolean):string[] {
     return this.expr.toArgumentNameList(firstArgIndex, noDupCheck);
   };
 

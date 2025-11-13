@@ -1,14 +1,18 @@
 import ohmGrammar from '../dist/ohm-grammar.js';
-import {Builder} from './Builder.js';
+import Builder from './Builder.js';
+import Matcher from './Matcher.js';
 import * as common from './common.js';
 import * as errors from './errors.js';
 import Grammar from './Grammar.js';
+import GrammarDecl from './GrammarDecl.js';
 import PExpr from './pexprs-main.js';
 import * as pexprs from './pexprs.js';
 
-const superSplicePlaceholder = Object.create(pexprs.PExpr.prototype);
+export type Namespace = { [key: string]:Grammar};
 
-function namespaceHas(ns:any, name:string):boolean {
+const superSplicePlaceholder = Object.create(pexprs.PExpr.prototype);  // ???
+
+function namespaceHas(ns:Namespace, name:string):boolean {
   // Look for an enumerable property, anywhere in the prototype chain.
   for (const prop in ns) {
     if (prop === name) return true;
@@ -20,9 +24,9 @@ function namespaceHas(ns:any, name:string):boolean {
 // `tree`, which is the concrete syntax tree of a user-written grammar.
 // The grammar will be assigned into `namespace` under the name of the grammar
 // as specified in the source.
-export function buildGrammar(match, namespace, optOhmGrammarForTesting) {
+export function buildGrammar(match:Matcher, namespace:Namespace, optOhmGrammarForTesting?:Grammar) {
   const builder = new Builder();
-  let decl;
+  let decl:GrammarDecl;
   let currentRuleName;
   let currentRuleFormals;
   let overriding = false;

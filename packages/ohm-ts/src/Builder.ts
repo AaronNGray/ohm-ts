@@ -1,5 +1,5 @@
 import Grammar from './Grammar.js';
-import GrammarDecl from './GrammarDecl.js';
+import GrammarDecl, {Rule, Rules} from './GrammarDecl.js';
 import PExpr from './pexprs-main.js';
 import * as pexprs from './pexprs.js';
 
@@ -20,7 +20,7 @@ export default class Builder {
     return new GrammarDecl(name);
   }
 
-  grammar(metaInfo, name:string, superGrammar:Grammar, defaultStartRule, rules):Grammar {
+  grammar(metaInfo, name:string, superGrammar:Grammar, defaultStartRule:string, rules:Rules):Grammar {
     const gDecl = new GrammarDecl(name);
     if (superGrammar) {
       // `superGrammar` may be a recipe (i.e. an Array), or an actual grammar instance.
@@ -63,7 +63,7 @@ export default class Builder {
     return new pexprs.Terminal(x);
   }
 
-  range(from:number, to:number):pexprs.Range {
+  range(from:string, to:string):pexprs.Range {
     return new pexprs.Range(from, to);
   }
 
@@ -71,12 +71,10 @@ export default class Builder {
     return new pexprs.Param(index);
   }
 
-  alt(...termArgs):pexprs.Alt {
+  alt(...termArgs:PExpr[]):pexprs.Alt {   // ??? !!!
     let terms = [];
     for (let arg of termArgs) {
-      if (!(arg instanceof pexprs.PExpr)) {
-        arg = this.fromRecipe(arg);
-      }
+      arg = arg instanceof PExpr ? arg : this.fromRecipe(arg);
       if (arg instanceof pexprs.Alt) {
         terms = terms.concat(arg.terms);
       } else {
@@ -86,12 +84,10 @@ export default class Builder {
     return terms.length === 1 ? terms[0] : new pexprs.Alt(terms);
   }
 
-  seq(...factorArgs):pexprs.Seq | PExpr {
+  seq(...factorArgs:PExpr[]):pexprs.Seq | PExpr {  // ??? !!!
     let factors:PExpr[] = [];
     for (let arg of factorArgs) {
-      if (!(arg instanceof pexprs.PExpr)) {
-        arg = this.fromRecipe(arg);
-      }
+      arg = arg instanceof PExpr ? arg : this.fromRecipe(arg);
       if (arg instanceof pexprs.Seq) {
         factors = factors.concat(arg.factors);
       } else {
@@ -101,52 +97,44 @@ export default class Builder {
     return factors.length === 1 ? factors[0] : new pexprs.Seq(factors);
   }
 
-  star(expr:string | PExpr) {
-    if (!(expr instanceof pexprs.PExpr)) {
-      expr = this.fromRecipe(expr);
-    }
+  star(expr:string | PExpr):pexprs.Star {
+    expr = expr instanceof PExpr ? expr : this.fromRecipe(expr);
     return new pexprs.Star(expr);
   }
 
-  plus(expr:string | PExpr) {
-    if (!(expr instanceof pexprs.PExpr)) {
-      expr = this.fromRecipe(expr);
-    }
+  plus(expr:string | PExpr):pexprs.Plus {
+    expr = expr instanceof PExpr ? expr : this.fromRecipe(expr);
     return new pexprs.Plus(expr);
   }
 
   opt(expr:string | PExpr):pexprs.Opt {
-    if (!(expr instanceof pexprs.PExpr)) {
-      expr = this.fromRecipe(expr);
-    }
+    expr = expr instanceof PExpr ? expr : this.fromRecipe(expr);
     return new pexprs.Opt(expr);
   }
 
-  not(expr:string | PExpr) {
-    if (!(expr instanceof pexprs.PExpr)) {
-      expr = this.fromRecipe(expr);
-    }
+  not(expr:string | PExpr):pexprs.Not {
+    expr = expr instanceof PExpr ? expr : this.fromRecipe(expr);
     return new pexprs.Not(expr);
   }
 
   lookahead(expr:string | PExpr) {
-    if (!(expr instanceof pexprs.PExpr)) {
+    if (!(expr instanceof PExpr)) {
       expr = this.fromRecipe(expr);
     }
     return new pexprs.Lookahead(expr);
   }
 
-  lex(expr:string | PExpr) {
-    if (!(expr instanceof pexprs.PExpr)) {
+  lex(expr:string | PExpr):pexprs.Lex {
+    if (!(expr instanceof PExpr)) {
       expr = this.fromRecipe(expr);
     }
     return new pexprs.Lex(expr);
   }
 
-  app(ruleName, optParams) {
+  app(ruleName:string, optParams?:PExpr[]):pexprs.Apply {
     if (optParams && optParams.length > 0) {
       optParams = optParams.map(function (param) {
-        return param instanceof pexprs.PExpr ? param : this.fromRecipe(param);
+        return param instanceof PExpr ? param : this.fromRecipe(param);
       }, this);
     }
     return new pexprs.Apply(ruleName, optParams);
@@ -155,7 +143,7 @@ export default class Builder {
   // Note that unlike other methods in this class, this method cannot be used as a
   // convenience constructor. It only works with recipes, because it relies on
   // `this.currentDecl` and `this.currentRuleName` being set.
-  splice(beforeTerms, afterTerms) {
+  splice(beforeTerms:PExpr[], afterTerms:PExpr[]):pexprs.Splice {
     return new pexprs.Splice(
       this.currentDecl.superGrammar,
       this.currentRuleName,
@@ -164,10 +152,10 @@ export default class Builder {
     );
   }
 
-  fromRecipe(recipe:string[]|any) {
+  fromRecipe(recipe:string[]|any):PExpr {
     // the meta-info of 'grammar' is processed in Builder.grammar
     const args = recipe[0] === 'grammar' ? recipe.slice(1) : recipe.slice(2);
-    const result = this[recipe[0]](...args);
+    const result = this[recipe[0]](...args);    // !!! SOLVE: bad dispatch 
 
     const metaInfo = recipe[1];
     if (metaInfo) {

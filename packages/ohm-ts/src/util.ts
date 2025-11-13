@@ -1,4 +1,5 @@
 import * as common from './common.js';
+import Grammar from './Grammar.js';
 
 // --------------------------------------------------------------------
 // Private stuff
@@ -6,7 +7,7 @@ import * as common from './common.js';
 
 // Given an array of numbers `arr`, return an array of the numbers as strings,
 // right-justified and padded to the same length.
-function padNumbersToEqualLength(arr) {
+function padNumbersToEqualLength(arr:number[]) {
   let maxLen = 0;
   const strings = arr.map(n => {
     const str = n.toString();
@@ -18,92 +19,102 @@ function padNumbersToEqualLength(arr) {
 
 // Produce a new string that would be the result of copying the contents
 // of the string `src` onto `dest` at offset `offest`.
-function strcpy(dest, src, offset) {
+function strcpy(dest:string, src:string, offset:number) {
   const origDestLen = dest.length;
   const start = dest.slice(0, offset);
   const end = dest.slice(offset + src.length);
   return (start + src + end).substr(0, origDestLen);
 }
 
+interface LineAndColumn {
+  offset:number;
+  lineNum:number;
+  colNum:number;
+  line:string;
+  prevLine:string | null;
+  nextLine:string | null;
+  toString:(ranges:number[][]) => string;
+}
+
 // Casts the underlying lineAndCol object to a formatted message string,
 // highlighting `ranges`.
-function lineAndColumnToMessage(...ranges) {
-  const lineAndCol = this;
-  const {offset} = lineAndCol;
-  const {repeatStr} = common;
+function lineAndColumnToMessage(lineAndCol:LineAndColumn) {
+  return function(ranges:number[][]) {
+    const {repeatStr} = common;
 
-  const sb = new common.StringBuffer();
-  sb.append('Line ' + lineAndCol.lineNum + ', col ' + lineAndCol.colNum + ':\n');
+    const sb = new common.StringBuffer();
+    sb.append('Line ' + lineAndCol.lineNum + ', col ' + lineAndCol.colNum + ':\n');
 
-  // An array of the previous, current, and next line numbers as strings of equal length.
-  const lineNumbers = padNumbersToEqualLength([
-    lineAndCol.prevLine == null ? 0 : lineAndCol.lineNum - 1,
-    lineAndCol.lineNum,
-    lineAndCol.nextLine == null ? 0 : lineAndCol.lineNum + 1,
-  ]);
+    // An array of the previous, current, and next line numbers as strings of equal length.
+    const lineNumbers = padNumbersToEqualLength([
+      lineAndCol.prevLine == null ? 0 : lineAndCol.lineNum - 1,
+      lineAndCol.lineNum,
+      lineAndCol.nextLine == null ? 0 : lineAndCol.lineNum + 1,
+    ]);
 
-  // Helper for appending formatting input lines to the buffer.
-  const appendLine = (num, content, prefix) => {
-    sb.append(prefix + lineNumbers[num] + ' | ' + content + '\n');
-  };
+    // Helper for appending formatting input lines to the buffer.
+    const appendLine = (num:number, content:string, prefix:string) => {
+      sb.append(prefix + lineNumbers[num] + ' | ' + content + '\n');
+    };
 
-  // Include the previous line for context if possible.
-  if (lineAndCol.prevLine != null) {
-    appendLine(0, lineAndCol.prevLine, '  ');
+    // Include the previous line for context if possible.
+    if (lineAndCol.prevLine != null) {
+      appendLine(0, lineAndCol.prevLine, '  ');
+    }
+    // Line that the error occurred on.
+    appendLine(1, lineAndCol.line, '> ');
+
+    // Build up the line that points to the offset and possible indicates one or more ranges.
+    // Start with a blank line, and indicate each range by overlaying a string of `~` chars.
+    const lineLen = lineAndCol.line.length;
+    let indicationLine = repeatStr(' ', lineLen + 1);
+    for (let i = 0; i < ranges.length; ++i) {
+      let startIdx = ranges[i][0];
+      let endIdx = ranges[i][1];
+      common.assert(startIdx >= 0 && startIdx <= endIdx, 'range start must be >= 0 and <= end');
+
+      const lineStartOffset = lineAndCol.offset - lineAndCol.colNum + 1;
+      startIdx = Math.max(0, startIdx - lineStartOffset);
+      endIdx = Math.min(endIdx - lineStartOffset, lineLen);
+
+      indicationLine = strcpy(indicationLine, repeatStr('~', endIdx - startIdx), startIdx);
+    }
+    const gutterWidth = 2 + lineNumbers[1].length + 3;
+    sb.append(repeatStr(' ', gutterWidth));
+    indicationLine = strcpy(indicationLine, '^', lineAndCol.colNum - 1);
+    sb.append(indicationLine.replace(/ +$/, '') + '\n');
+
+    // Include the next line for context if possible.
+    if (lineAndCol.nextLine != null) {
+      appendLine(2, lineAndCol.nextLine, '  ');
+    }
+    return sb.contents();
   }
-  // Line that the error occurred on.
-  appendLine(1, lineAndCol.line, '> ');
-
-  // Build up the line that points to the offset and possible indicates one or more ranges.
-  // Start with a blank line, and indicate each range by overlaying a string of `~` chars.
-  const lineLen = lineAndCol.line.length;
-  let indicationLine = repeatStr(' ', lineLen + 1);
-  for (let i = 0; i < ranges.length; ++i) {
-    let startIdx = ranges[i][0];
-    let endIdx = ranges[i][1];
-    common.assert(startIdx >= 0 && startIdx <= endIdx, 'range start must be >= 0 and <= end');
-
-    const lineStartOffset = offset - lineAndCol.colNum + 1;
-    startIdx = Math.max(0, startIdx - lineStartOffset);
-    endIdx = Math.min(endIdx - lineStartOffset, lineLen);
-
-    indicationLine = strcpy(indicationLine, repeatStr('~', endIdx - startIdx), startIdx);
-  }
-  const gutterWidth = 2 + lineNumbers[1].length + 3;
-  sb.append(repeatStr(' ', gutterWidth));
-  indicationLine = strcpy(indicationLine, '^', lineAndCol.colNum - 1);
-  sb.append(indicationLine.replace(/ +$/, '') + '\n');
-
-  // Include the next line for context if possible.
-  if (lineAndCol.nextLine != null) {
-    appendLine(2, lineAndCol.nextLine, '  ');
-  }
-  return sb.contents();
 }
 
 // --------------------------------------------------------------------
 // Exports
 // --------------------------------------------------------------------
 
-let builtInRulesCallbacks = [];
+let builtInRulesCallbacks:((grammar:Grammar) => void)[] = [];
 
 // Since Grammar.BuiltInRules is bootstrapped, most of Ohm can't directly depend it.
 // This function allows modules that do depend on the built-in rules to register a callback
 // that will be called later in the initialization process.
-export function awaitBuiltInRules(cb) {
+export function awaitBuiltInRules(cb:(grammar:Grammar) => void) {
   builtInRulesCallbacks.push(cb);
 }
 
-export function announceBuiltInRules(grammar) {
+export function announceBuiltInRules(grammar:Grammar) {
   builtInRulesCallbacks.forEach(cb => {
     cb(grammar);
   });
-  builtInRulesCallbacks = null;
+  builtInRulesCallbacks = [];
 }
 
 // Return an object with the line and column information for the given
 // offset in `str`.
-export function getLineAndColumn(str, offset) {
+export function getLineAndColumn(str:string, offset:number):LineAndColumn {
   let lineNum = 1;
   let colNum = 1;
 
@@ -150,24 +161,26 @@ export function getLineAndColumn(str, offset) {
   // Get the target line, stripping a trailing carriage return if necessary.
   const line = str.slice(lineStartOffset, lineEndOffset).replace(/\r$/, '');
 
-  return {
+  const result:LineAndColumn = {
     offset,
     lineNum,
     colNum,
     line,
     prevLine,
     nextLine,
-    toString: lineAndColumnToMessage,
+//    toString: lineAndColumnToMessage(this)
   };
+  result.toString = lineAndColumnToMessage(result);
+  return result;
 }
 
 // Return a nicely-formatted string describing the line and column for the
 // given offset in `str` highlighting `ranges`.
-export function getLineAndColumnMessage(str, offset, ...ranges) {
-  return getLineAndColumn(str, offset).toString(...ranges);
+export function getLineAndColumnMessage(str:string, offset:number, ...ranges:number[][]) {
+  return getLineAndColumn(str, offset).toString(ranges);
 }
 
 export const uniqueId = (() => {
   let idCounter = 0;
-  return prefix => '' + prefix + idCounter++;
+  return (prefix:string) => '' + prefix + idCounter++;
 })();

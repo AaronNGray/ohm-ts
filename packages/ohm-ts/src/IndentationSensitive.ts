@@ -1,10 +1,15 @@
 import BuiltInRules from '../dist/built-in-rules.js';
-import {Builder} from '../src/Builder.js';
-import {Failure} from '../src/Failure.js';
+import Builder from '../src/Builder.js';
+import Failure from '../src/Failure.js';
 import {TerminalNode} from '../src/nodes.js';
-import * as pexprs from '../src/pexprs.js';
+import Grammar from './Grammar.js';
+import PExpr, {type Formals, type Recipe, getMetaInfo} from '../src/pexprs-main.js';
+import * as pexprs from '../src/pexprs-main.js';
 import {findIndentation} from './findIndentation.js';
-import {InputStream} from './InputStream.js';
+import InputStream from './InputStream.js';
+import MatchState from './MatchState.js';
+import {MemoRec} from './PosInfo.js';
+import Interval from './Interval.js';
 
 const INDENT_DESCRIPTION = 'an indented block';
 const DEDENT_DESCRIPTION = 'a dedent';
@@ -13,20 +18,21 @@ const DEDENT_DESCRIPTION = 'a dedent';
 const INVALID_CODE_POINT = 0x10ffff + 1;
 
 class InputStreamWithIndentation extends InputStream {
-  constructor(state) {
+  constructor(state:MatchState) {
     super(state.input);
     this.state = state;
   }
+  state:MatchState;
 
-  _indentationAt(pos) {
+  _indentationAt(pos:number):number {
     return this.state.userData[pos] || 0;
   }
 
-  atEnd() {
+  atEnd():boolean {
     return super.atEnd() && this._indentationAt(this.pos) === 0;
   }
 
-  next() {
+  next():string {
     if (this._indentationAt(this.pos) !== 0) {
       this.examinedLength = Math.max(this.examinedLength, this.pos);
       return undefined;
@@ -34,7 +40,7 @@ class InputStreamWithIndentation extends InputStream {
     return super.next();
   }
 
-  nextCharCode() {
+  nextCharCode():number {
     if (this._indentationAt(this.pos) !== 0) {
       this.examinedLength = Math.max(this.examinedLength, this.pos);
       return INVALID_CODE_POINT;
@@ -42,7 +48,7 @@ class InputStreamWithIndentation extends InputStream {
     return super.nextCharCode();
   }
 
-  nextCodePoint() {
+  nextCodePoint():number {
     if (this._indentationAt(this.pos) !== 0) {
       this.examinedLength = Math.max(this.examinedLength, this.pos);
       return INVALID_CODE_POINT;
@@ -51,17 +57,18 @@ class InputStreamWithIndentation extends InputStream {
   }
 }
 
-class Indentation extends pexprs.PExpr {
-  constructor(isIndent = true) {
+class Indentation extends PExpr {
+  constructor(isIndent:boolean = true) {
     super();
     this.isIndent = isIndent;
   }
+  isIndent:boolean;
 
-  allowsSkippingPrecedingSpace() {
+  allowsSkippingPrecedingSpace():boolean {
     return true;
   }
 
-  eval(state) {
+  eval(state:MatchState):boolean {
     const {inputStream} = state;
     const pseudoTokens = state.userData;
     state.doNotMemoize = true;
@@ -83,37 +90,45 @@ class Indentation extends pexprs.PExpr {
     }
   }
 
-  getArity() {
+  getArity():number {
     return 1;
   }
 
-  _assertAllApplicationsAreValid(ruleName, grammar) {}
+  _assertAllApplicationsAreValid(ruleName:string, grammar:Grammar) {}
 
-  _isNullable(grammar, memo) {
+  _isNullable(grammar:Grammar, memo:MemoRec):boolean {
     return false;
   }
 
-  assertChoicesHaveUniformArity(ruleName) {}
+  assertChoicesHaveUniformArity(ruleName:string):void {}
 
-  assertIteratedExprsAreNotNullable(grammar) {}
+  assertIteratedExprsAreNotNullable(grammar:Grammar):void {}
 
-  introduceParams(formals) {
+  introduceParams(formals:Formals):PExpr {
     return this;
   }
 
-  substituteParams(actuals) {
+  outputRecipe(formals:Formals, grammarInterval:Interval):Recipe {
+    return ['indentation', getMetaInfo(this, grammarInterval)];
+  }
+
+  substituteParams(actuals:number[]):PExpr {
     return this;
   }
 
-  toString() {
+  toArgumentNameList(firstArgIndex:number, noDupCheck:boolean):string[] {
+    return ['indentation'];
+  }
+
+  toString():string {
     return this.isIndent ? 'indent' : 'dedent';
   }
 
-  toDisplayString() {
+  toDisplayString():string {
     return this.toString();
   }
 
-  toFailure(grammar) {
+  toFailure(grammar:Grammar):Failure {
     const description = this.isIndent ? INDENT_DESCRIPTION : DEDENT_DESCRIPTION;
     return new Failure(this, description, 'description');
   }
@@ -133,7 +148,7 @@ export const IndentationSensitive = new Builder()
   .build();
 
 Object.assign(IndentationSensitive, {
-  _matchStateInitializer(state) {
+  _matchStateInitializer(state:MatchState) {
     state.userData = findIndentation(state.input);
     state.inputStream = new InputStreamWithIndentation(state);
   },

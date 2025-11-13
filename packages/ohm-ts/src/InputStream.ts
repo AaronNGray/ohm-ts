@@ -12,25 +12,25 @@ export default class InputStream {
   pos:number;
   examinedLength:number;
 
-  atEnd() {
+  atEnd():boolean {
     const ans = this.pos >= this.source.length;
     this.examinedLength = Math.max(this.examinedLength, this.pos + 1);
     return ans;
   }
 
-  next() {
+  next():string {
     const ans = this.source[this.pos++];
     this.examinedLength = Math.max(this.examinedLength, this.pos);
     return ans;
   }
 
-  nextCharCode() {
+  nextCharCode():number {
     const nextChar = this.next();
     return nextChar && nextChar.charCodeAt(0);
   }
 
-  nextCodePoint() {
-    const cp = this.source.slice(this.pos++).codePointAt(0);
+  nextCodePoint():number {
+    const cp = this.source.slice(this.pos++).codePointAt(0)!;   // !!! !
     // If the code point is beyond plane 0, it takes up two characters.
     if (cp > MAX_CHAR_CODE) {
       this.pos += 1;
@@ -39,7 +39,7 @@ export default class InputStream {
     return cp;
   }
 
-  matchString(s:string, optIgnoreCase:boolean):boolean {
+  matchString(s:string, optIgnoreCase:boolean = false):boolean {
     let idx;
     if (optIgnoreCase) {
       /*
@@ -70,11 +70,11 @@ export default class InputStream {
     return true;
   }
 
-  sourceSlice(startIdx:number, endIdx:number) {
+  sourceSlice(startIdx:number, endIdx:number):string {
     return this.source.slice(startIdx, endIdx);
   }
 
-  interval(startIdx:number, optEndIdx?:number) {
+  interval(startIdx:number, optEndIdx?:number):Interval {
     return new Interval(this.source, startIdx, optEndIdx ? optEndIdx : this.pos);
   }
 }

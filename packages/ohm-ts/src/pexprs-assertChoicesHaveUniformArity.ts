@@ -1,12 +1,13 @@
 import {abstract} from './common.js';
 import * as errors from './errors.js';
 import * as pexprs from './pexprs-main.js';
+import PExpr from './pexprs-main.js';
 
 // --------------------------------------------------------------------
 // Operations
 // --------------------------------------------------------------------
 
-pexprs.PExpr.prototype.assertChoicesHaveUniformArity = abstract(
+PExpr.prototype.assertChoicesHaveUniformArity = abstract(
   'assertChoicesHaveUniformArity'
 );
 
@@ -28,7 +29,7 @@ pexprs.Alt.prototype.assertChoicesHaveUniformArity = function (ruleName) {
   const arity = this.terms[0].getArity();
   for (let idx = 0; idx < this.terms.length; idx++) {
     const term = this.terms[idx];
-    term.assertChoicesHaveUniformArity();
+    term.assertChoicesHaveUniformArity("");   // ??? ""
     const otherArity = term.getArity();
     if (arity !== otherArity) {
       throw errors.inconsistentArity(ruleName, arity, otherArity, term);

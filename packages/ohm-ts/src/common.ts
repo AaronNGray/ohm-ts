@@ -36,7 +36,7 @@ export function abstract(optMethodName: string): (this: any) => never {
   };
 }
 
-export function assert(cond:boolean, message:string):void|never {
+export function assert(cond:boolean, message?:string):void|never {
   if (!cond) {
     throw new Error(message || 'Assertion failed');
   }
@@ -110,7 +110,7 @@ export function isLexical(ruleName:string):boolean {
   return !isSyntactic(ruleName);
 }
 
-export function padLeft(str:string, len:number, optChar:string) {
+export function padLeft(str:string, len:number, optChar?:string) {
   const ch = optChar || ' ';
   if (str.length < len) {
     return repeatStr(ch, len - str.length) + str;

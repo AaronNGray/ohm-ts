@@ -1,8 +1,14 @@
-import {Matcher} from './Matcher.js';
-import {Semantics} from './Semantics.js';
+import Interval from './Interval.js';
+import Matcher from './Matcher.js';
+import MatchResult from './MatchResult.js';
+import Trace from './Trace.js';
+import Semantics from './Semantics.js';
+import {Rule, Rules} from './GrammarDecl.js';
 import * as common from './common.js';
 import * as errors from './errors.js';
+import {SyntaxError} from './errors.js';
 import * as pexprs from './pexprs.js';
+import Recipe from './pexprs-main.js';
 
 // --------------------------------------------------------------------
 // Private stuff
@@ -10,7 +16,7 @@ import * as pexprs from './pexprs.js';
 
 const SPECIAL_ACTION_NAMES = ['_iter', '_terminal', '_nonterminal', '_default'];
 
-function getSortedRuleValues(grammar:Grammar) {
+function getSortedRuleValues(grammar:Grammar):Rule[] {
   return Object.keys(grammar.rules)
     .sort()
     .map(name => grammar.rules[name]);
@@ -23,16 +29,16 @@ function getSortedRuleValues(grammar:Grammar) {
 // See https://v8.dev/features/subsume-json for more details.
 const jsonToJS = (str:string) => str.replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 
-let ohmGrammar;
+let ohmGrammar:Grammar;
 let buildGrammar;
 
 export default class Grammar {
-  constructor(name:string, superGrammar:Grammar, rules, optDefaultStartRule:Rule) {
+  constructor(name:string, superGrammar:Grammar, rules:Rules, optDefaultStartRule:Rule, source?:Interval) {
     this.name = name;
     this.superGrammar = superGrammar;
     this.rules = rules;
     if (optDefaultStartRule) {
-      if (!(optDefaultStartRule in rules)) {
+      if (!(optDefaultStartRule in rules)) {    // ??? needs [unit] test 
         throw new Error(
           "Invalid start rule: '" +
             optDefaultStartRule +
@@ -48,26 +54,27 @@ export default class Grammar {
   }
 
   name:string;
+  source?:Interval; // ??? - never assigned 
   superGrammar:Grammar;
-  rules;
-  defaultStartRule;
+  rules:Rules;
+  defaultStartRule:Rule; // ??? string ???
   _matchStateInitializer:any|undefined;
   supportsIncrementalParsing:boolean;
 
-  static ProtoBuiltInRules;
-  static BuiltInRules;
+  static ProtoBuiltInRules:Rules;   // ??? Rules ???
+  static BuiltInRules:Rules;
 
-  matcher() {
+  matcher():Matcher {
     return new Matcher(this);
   }
 
   // Return true if the grammar is a built-in grammar, otherwise false.
   // NOTE: This might give an unexpected result if called before BuiltInRules is defined!
-  isBuiltIn() {
-    return this === Grammar.ProtoBuiltInRules || this === Grammar.BuiltInRules;
+  isBuiltIn():boolean {
+    return this.rules === Grammar.ProtoBuiltInRules || this.rules === Grammar.BuiltInRules;  // ??? .rules
   }
 
-  equals(g:Grammar) {
+  equals(g:Grammar):boolean {
     if (this === g) {
       return true;
     }
@@ -84,7 +91,7 @@ export default class Grammar {
     const otherRules = getSortedRuleValues(g);
     return (
       myRules.length === otherRules.length &&
-      myRules.every((rule, i) => {
+      myRules.every((rule:Rule, i:number) => {
         return (
           rule.description === otherRules[i].description &&
           rule.formals.join(',') === otherRules[i].formals.join(',') &&
@@ -94,29 +101,29 @@ export default class Grammar {
     );
   }
 
-  match(input, optStartApplication) {
+  match(input:string, optStartApplication?:string):MatchResult {
     const m = this.matcher();
     m.replaceInputRange(0, 0, input);
     return m.match(optStartApplication);
   }
 
-  trace(input, optStartApplication) {
+  trace(input:string, optStartApplication):MatchResult {
     const m = this.matcher();
     m.replaceInputRange(0, 0, input);
     return m.trace(optStartApplication);
   }
 
-  createSemantics() {
+  createSemantics():Semantics {
     return Semantics.createSemantics(this);
   }
 
-  extendSemantics(superSemantics) {
+  extendSemantics(superSemantics:Semantics):Semantics {
     return Semantics.createSemantics(this, superSemantics._getSemantics());
   }
 
   // Check that every key in `actionDict` corresponds to a semantic action, and that it maps to
   // a function of the correct arity. If not, throw an exception.
-  _checkTopDownActionDict(what, name, actionDict) {
+  _checkTopDownActionDict(what:string, name:string, actionDict:any) {
     const problems = [];
 
     for (const k in actionDict) {
@@ -134,7 +141,7 @@ export default class Grammar {
       const actual = v.length;
       const expected = this._topDownActionArity(k);
       if (actual !== expected) {
-        let details;
+        let details:string;
         if (k === '_iter' || k === '_nonterminal') {
           details =
             `it should use a rest parameter, e.g. \`${k}(...children) {}\`. ` +
@@ -147,7 +154,7 @@ export default class Grammar {
     }
     if (problems.length > 0) {
       const prettyProblems = problems.map(problem => '- ' + problem);
-      const error = new Error(
+      const error = new SyntaxError(
         [
           `Found errors in the action dictionary of the '${name}' ${what}:`,
           ...prettyProblems,
@@ -160,7 +167,7 @@ export default class Grammar {
 
   // Return the expected arity for a semantic action named `actionName`, which
   // is either a rule name or a special action name like '_nonterminal'.
-  _topDownActionArity(actionName) {
+  _topDownActionArity(actionName:string) {
     // All special actions have an expected arity of 0, though all but _terminal
     // are expected to use the rest parameter syntax (e.g. `_iter(...children)`).
     // This is considered to have arity 0, i.e. `((...args) => {}).length` is 0.
@@ -169,10 +176,10 @@ export default class Grammar {
       : this.rules[actionName].body.getArity();
   }
 
-  _inheritsFrom(grammar) {
+  _inheritsFrom(grammar):boolean {
     let g = this.superGrammar;
     while (g) {
-      if (g.equals(grammar, true)) {
+      if (g.equals(grammar)) {    // !!! BUG - g.equals(grammar, true)
         return true;
       }
       g = g.superGrammar;
@@ -180,8 +187,8 @@ export default class Grammar {
     return false;
   }
 
-  toRecipe(superGrammarExpr = undefined) {
-    const metaInfo = {};
+  toRecipe(superGrammarExpr = undefined):string {
+    const metaInfo:{source?:string;} = {};
     // Include the grammar source if it is available.
     if (this.source) {
       metaInfo.source = this.source.contents;
@@ -192,7 +199,7 @@ export default class Grammar {
       startRule = this.defaultStartRule;
     }
 
-    const rules = {};
+    const rules = []; // ???
     Object.keys(this.rules).forEach(ruleName => {
       const ruleInfo = this.rules[ruleName];
       const {body} = ruleInfo;
@@ -205,7 +212,7 @@ export default class Grammar {
         operation = body instanceof pexprs.Extend ? 'extend' : 'override';
       }
 
-      const metaInfo = {};
+      const metaInfo:{sourceInterval:number[]} = {};
       if (ruleInfo.source && this.source) {
         const adjusted = ruleInfo.source.relativeTo(this.source);
         metaInfo.sourceInterval = [adjusted.startIdx, adjusted.endIdx];
@@ -219,7 +226,7 @@ export default class Grammar {
         metaInfo,
         description,
         ruleInfo.formals,
-        bodyRecipe,
+        bodyRecipe
       ];
     });
 
@@ -233,9 +240,9 @@ export default class Grammar {
     }
 
     const recipeElements = [
-      ...['grammar', metaInfo, this.name].map(JSON.stringify),
+      ...['grammar', metaInfo, this.name].map((element:any) => JSON.stringify(element)),
       superGrammarOutput,
-      ...[startRule, rules].map(JSON.stringify),
+      ...[startRule, rules].map((element:any) => JSON.stringify(element)),
     ];
     return jsonToJS(`[${recipeElements.join(',')}]`);
   }
@@ -325,7 +332,7 @@ export default class Grammar {
 // `BuiltInRules`. That grammar contains several convenience rules, e.g., `letter` and
 // `digit`, and is implicitly the super-grammar of any grammar whose super-grammar
 // isn't specified.
-Grammar.ProtoBuiltInRules = new Grammar(
+Grammar.ProtoBuiltInRules = new Grammar(      /// !!! TODO: Grammer .v. Rules
   'ProtoBuiltInRules', // name
   undefined, // supergrammar
   {

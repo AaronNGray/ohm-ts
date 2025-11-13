@@ -1,5 +1,8 @@
-import {Interval} from './Interval.js';
+import Interval from './Interval.js';
 import * as common from './common.js';
+import PExpr from './pexprs-main.js';
+import Node from './nodes.js';
+import MatchResult from './MatchResult.js';
 
 // --------------------------------------------------------------------
 // Private stuff
@@ -15,6 +18,7 @@ const SYMBOL_FOR_LINE_FEED = '\u240A';
 const SYMBOL_FOR_CARRIAGE_RETURN = '\u240D';
 
 const Flags = {
+  none: 0,
   succeeded: 1 << 0,
   isRootNode: 1 << 1,
   isImplicitSpaces: 1 << 2,
@@ -23,13 +27,13 @@ const Flags = {
   terminatesLR: 1 << 5,
 };
 
-function spaces(n) {
+function spaces(n:number) {
   return common.repeat(' ', n).join('');
 }
 
 // Return a string representation of a portion of `input` at offset `pos`.
 // The result will contain exactly `len` characters.
-function getInputExcerpt(input, pos, len) {
+function getInputExcerpt(input:string, pos:number, len:number) {
   const excerpt = asEscapedString(input.slice(pos, pos + len));
 
   // Pad the output if necessary.
@@ -39,7 +43,7 @@ function getInputExcerpt(input, pos, len) {
   return excerpt;
 }
 
-function asEscapedString(obj) {
+function asEscapedString(obj:any) {
   if (typeof obj === 'string') {
     // Replace non-printable characters with visible symbols.
     return obj
@@ -53,35 +57,55 @@ function asEscapedString(obj) {
 
 // ----------------- Trace -----------------
 
-export class Trace {
-  constructor(input, pos1, pos2, expr, succeeded, bindings, optChildren) {
+export default class Trace {
+  constructor(input:string, pos1:number, pos2:number, expr:PExpr, succeeded:boolean, bindings:any[], optChildren:Trace[]) {
     this.input = input;
-    this.pos = this.pos1 = pos1;
+    this.pos = pos1; // ??? this.pos1
     this.pos2 = pos2;
     this.source = new Interval(input, pos1, pos2);
     this.expr = expr;
-    this.bindings = bindings;
+    this.bindings = bindings;   // !!! TODO introduce Bindings type
     this.children = optChildren || [];
     this.terminatingLREntry = null;
 
-    this._flags = succeeded ? Flags.succeeded : 0;
+    this._flags = succeeded ? Flags.succeeded : Flags.none;
   }
 
-  get displayString() {
+  input:string;
+  pos:number;
+  pos2:number;
+  source:Interval;
+  expr:PExpr;
+  bindings:any; // ???
+  children:Trace[]; // ???
+
+  isHeadOfLeftRecursion:boolean;
+  isImplicitSpaces:boolean;
+  isMemoized:boolean;
+  isRootNode:boolean;
+  
+  terminatesLR:any; /// ???
+  terminatingLREntry:any; // ???
+
+  _flags:number;
+
+  result:MatchResult; // ???
+
+  get displayString():string {
     return this.expr.toDisplayString();
   }
 
-  clone() {
+  clone():Trace {
     return this.cloneWithExpr(this.expr);
   }
 
-  cloneWithExpr(expr) {
+  cloneWithExpr(expr:PExpr):Trace {
     const ans = new Trace(
       this.input,
       this.pos,
       this.pos2,
       expr,
-      this.succeeded,
+      this._flags == Flags.succeeded, // this.succeeded,   // !!! bug
       this.bindings,
       this.children
     );
@@ -96,7 +120,7 @@ export class Trace {
   }
 
   // Record the trace information for the terminating condition of the LR loop.
-  recordLRTermination(ruleBodyTrace, value) {
+  recordLRTermination(ruleBodyTrace:Trace, value:any) {
     this.terminatingLREntry = new Trace(
       this.input,
       this.pos,
@@ -118,7 +142,7 @@ export class Trace {
   // The functions are called with three arguments: the Trace node, its parent Trace, and a number
   // representing the depth of the node in the tree. (The root node has depth 0.) `optThisArg`, if
   // specified, is the value to use for `this` when executing the visitor functions.
-  walk(visitorObjOrFn, optThisArg) {
+  walk(visitorObjOrFn:(node:Node, parent:Node, depth:number) => string, optThisArg?:Trace):void {
     let visitor = visitorObjOrFn;
     if (typeof visitor === 'function') {
       visitor = {enter: visitor};
@@ -155,9 +179,9 @@ export class Trace {
   //     12⋅+⋅2⋅*⋅3 ✓ exp ⇒  "12"
   //     12⋅+⋅2⋅*⋅3   ✓ addExp (LR) ⇒  "12"
   //     12⋅+⋅2⋅*⋅3       ✗ addExp_plus
-  toString() {
+  toString():string {
     const sb = new common.StringBuffer();
-    this.walk((node, parent, depth) => {
+    this.walk((node:Node, parent:Node, depth:number):string => {
       if (!node) {
         return this.SKIP;
       }
@@ -180,6 +204,7 @@ export class Trace {
     });
     return sb.contents();
   }
+  SKIP:any = {};  // ???
 }
 
 // A value that can be returned from visitor functions to indicate that a
@@ -188,7 +213,7 @@ Trace.prototype.SKIP = {};
 
 // For convenience, create a getter and setter for the boolean flags in `Flags`.
 Object.keys(Flags).forEach(name => {
-  const mask = Flags[name];
+  const mask = (Flags as any)[name];
   Object.defineProperty(Trace.prototype, name, {
     get() {
       return (this._flags & mask) !== 0;
@@ -202,3 +227,4 @@ Object.keys(Flags).forEach(name => {
     },
   });
 });
+

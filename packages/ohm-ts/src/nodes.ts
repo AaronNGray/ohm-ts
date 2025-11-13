@@ -11,6 +11,7 @@ export default class Node {
 
   matchLength:number;
   children:Node[] = [];
+  [key: string]: any; // ???
 
   get ctorName():string {
     throw new Error('subclass responsibility');
@@ -167,7 +168,7 @@ export class IterationNode extends Node {
     this.optional = isOptional;
   }
 
-  children:Node[];
+  //children:Node[];
   childOffsets:number[]; // ???
   optional:boolean;
 

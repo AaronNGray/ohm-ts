@@ -2,9 +2,11 @@ import InputStream from './InputStream.js';
 import Matcher from './Matcher.js';
 import MatchResult from './MatchResult.js';
 import Grammar from './Grammar.js';
+import Node from './nodes.js';
 
-import {PosInfo} from './PosInfo.js';
-import {Trace} from './Trace.js';
+import PosInfo from './PosInfo.js';
+import Failure, {Failures} from './Failure.js';
+import Trace from './Trace.js';
 import PExpr from './pexprs-main.js';
 import * as pexprs from './pexprs.js';
 import * as util from './util.js';
@@ -51,17 +53,32 @@ export default class MatchState {
   }
 
   matcher:Matcher;
-  startExpr:PExpr;
   grammar:Grammar;
+  input:string;
+  inputStream:InputStream;
+  memoTable:any[];
+  userData:any;
+  doNotMemoize:boolean;
 
+  startExpr:PExpr;
+
+  _bindings:any[];
+  _bindingOffsets:number[];
   _applicationStack:pexprs.Apply[]; // ??!
   _posStack:number[];
+  inLexifiedContextStack:boolean[];
+  rightmostFailurePosition:number;
+  _rightmostFailurePositionStack:any[]; // ??
+  _recordedFailuresStack:any[]; // ???
+  positionToRecordFailures:any;  // ???
+  recordedFailures:Failures; // !!!
+  trace:Trace[];
 
-  posToOffset(pos:number) {
+  posToOffset(pos:number):number {
     return pos - this._posStack[this._posStack.length - 1];
   }
 
-  enterApplication(posInfo, app:pexprs.Apply) {
+  enterApplication(posInfo:PosInfo, app:pexprs.Apply):void {
     this._posStack.push(this.inputStream.pos);
     this._applicationStack.push(app);
     this.inLexifiedContextStack.push(false);
@@ -70,7 +87,7 @@ export default class MatchState {
     this.rightmostFailurePosition = -1;
   }
 
-  exitApplication(posInfo, optNode) {
+  exitApplication(posInfo:PosInfo, optNode?:Node|false):void {
     const origPos = this._posStack.pop();
     this._applicationStack.pop();
     this.inLexifiedContextStack.pop();
@@ -86,11 +103,11 @@ export default class MatchState {
     }
   }
 
-  enterLexifiedContext() {
+  enterLexifiedContext():void {
     this.inLexifiedContextStack.push(true);
   }
 
-  exitLexifiedContext() {
+  exitLexifiedContext():void {
     this.inLexifiedContextStack.pop();
   }
 
@@ -98,7 +115,7 @@ export default class MatchState {
     return this._applicationStack[this._applicationStack.length - 1];
   }
 
-  inSyntacticContext() {
+  inSyntacticContext():boolean {
     const currentApplication = this.currentApplication();
     if (currentApplication) {
       return currentApplication.isSyntactic() && !this.inLexifiedContext();
@@ -108,11 +125,11 @@ export default class MatchState {
     }
   }
 
-  inLexifiedContext() {
+  inLexifiedContext():boolean {
     return this.inLexifiedContextStack[this.inLexifiedContextStack.length - 1];
   }
 
-  skipSpaces() {
+  skipSpaces():number {
     this.pushFailuresInfo();
     this.eval(applySpaces);
     this.popBinding();
@@ -120,11 +137,11 @@ export default class MatchState {
     return this.inputStream.pos;
   }
 
-  skipSpacesIfInSyntacticContext() {
+  skipSpacesIfInSyntacticContext():number {
     return this.inSyntacticContext() ? this.skipSpaces() : this.inputStream.pos;
   }
 
-  maybeSkipSpacesBefore(expr) {
+  maybeSkipSpacesBefore(expr:PExpr):number {
     if (expr.allowsSkippingPrecedingSpace() && expr !== applySpaces) {
       return this.skipSpacesIfInSyntacticContext();
     } else {
@@ -132,21 +149,21 @@ export default class MatchState {
     }
   }
 
-  pushBinding(node, origPos) {
+  pushBinding(node:Node, origPos:number):void {
     this._bindings.push(node);
     this._bindingOffsets.push(this.posToOffset(origPos));
   }
 
-  popBinding() {
+  popBinding():void {
     this._bindings.pop();
     this._bindingOffsets.pop();
   }
 
-  numBindings() {
+  numBindings():number {
     return this._bindings.length;
   }
 
-  truncateBindings(newLength) {
+  truncateBindings(newLength:number):void {
     // Yes, this is this really faster than setting the `length` property (tested with
     // bin/es5bench on Node v6.1.0).
     // Update 2021-10-25: still true on v14.15.5 — it's ~20% speedup on es5bench.
@@ -155,11 +172,11 @@ export default class MatchState {
     }
   }
 
-  getCurrentPosInfo() {
+  getCurrentPosInfo():PosInfo {
     return this.getPosInfo(this.inputStream.pos);
   }
 
-  getPosInfo(pos:number) {
+  getPosInfo(pos:number):PosInfo {
     let posInfo = this.memoTable[pos];
     if (!posInfo) {
       posInfo = this.memoTable[pos] = new PosInfo();
@@ -167,7 +184,7 @@ export default class MatchState {
     return posInfo;
   }
 
-  processFailure(pos, expr) {
+  processFailure(pos:number, expr:PExpr):void {
     this.rightmostFailurePosition = Math.max(this.rightmostFailurePosition, pos);
 
     if (this.recordedFailures && pos === this.positionToRecordFailures) {
@@ -187,7 +204,7 @@ export default class MatchState {
     }
   }
 
-  recordFailure(failure, shouldCloneIfNew) {
+  recordFailure(failure:any, shouldCloneIfNew:boolean):void {
     const key = failure.toKey();
     if (!this.recordedFailures[key]) {
       this.recordedFailures[key] = shouldCloneIfNew ? failure.clone() : failure;
@@ -196,13 +213,13 @@ export default class MatchState {
     }
   }
 
-  recordFailures(failures, shouldCloneIfNew) {
+  recordFailures(failures:any, shouldCloneIfNew:boolean):void {
     Object.keys(failures).forEach(key => {
       this.recordFailure(failures[key], shouldCloneIfNew);
     });
   }
 
-  cloneRecordedFailures() {
+  cloneRecordedFailures():Failures {
     if (!this.recordedFailures) {
       return undefined;
     }
@@ -214,18 +231,18 @@ export default class MatchState {
     return ans;
   }
 
-  getRightmostFailurePosition() {
+  getRightmostFailurePosition():number {
     return this.rightmostFailurePosition;
   }
 
-  _getRightmostFailureOffset() {
+  _getRightmostFailureOffset():number {
     return this.rightmostFailurePosition >= 0
       ? this.posToOffset(this.rightmostFailurePosition)
       : -1;
   }
 
   // Returns the memoized trace entry for `expr` at `pos`, if one exists, `null` otherwise.
-  getMemoizedTraceEntry(pos, expr) {
+  getMemoizedTraceEntry(pos:number, expr:PExpr):Trace {
     const posInfo = this.memoTable[pos];
     if (posInfo && expr instanceof pexprs.Apply) {
       const memoRec = posInfo.memo[expr.toMemoKey()];
@@ -239,7 +256,7 @@ export default class MatchState {
   }
 
   // Returns a new trace entry, with the currently active trace array as its children.
-  getTraceEntry(pos, expr, succeeded, bindings) {
+  getTraceEntry(pos:number, expr:PExpr, succeeded:boolean, bindings:any):Trace {
     if (expr instanceof pexprs.Apply) {
       const app = this.currentApplication();
       const actuals = app ? app.args : [];
@@ -251,7 +268,7 @@ export default class MatchState {
     );
   }
 
-  isTracing() {
+  isTracing():boolean {
     return !!this.trace;
   }
 
@@ -270,7 +287,7 @@ export default class MatchState {
     return true;
   }
 
-  useMemoizedResult(origPos, memoRec) {
+  useMemoizedResult(origPos:number, memoRec) {
     if (this.trace) {
       this.trace.push(memoRec.traceEntry);
     }

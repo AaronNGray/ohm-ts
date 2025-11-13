@@ -1,11 +1,12 @@
 import {abstract} from './common.js';
 import * as pexprs from './pexprs-main.js';
+import PExpr from './pexprs-main.js';
 
 // --------------------------------------------------------------------
 // Operations
 // --------------------------------------------------------------------
 
-pexprs.PExpr.prototype.getArity = abstract('getArity');
+PExpr.prototype.getArity = abstract('getArity');
 
 pexprs.any.getArity =
   pexprs.end.getArity =

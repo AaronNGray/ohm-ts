@@ -3,6 +3,7 @@ import Grammar from './Grammar.js';
 import PExpr from './pexprs-main.js';
 import MatchState from './MatchState.js';
 import MatchResult from './MatchResult.js';
+import Trace from './Trace.js';
 import * as pexprs from './pexprs.js';
 import InputStream from './InputStream.js';
 
@@ -75,21 +76,21 @@ export default class Matcher {
     return this;
   }
 
-  match(optStartApplicationStr:string, options = {incremental: true}) {
+  match(optStartApplicationStr:string, options = {incremental: true}):MatchResult {
     return this._match(this._getStartExpr(optStartApplicationStr), {
       incremental: options.incremental,
       tracing: false,
-    });
+    }) as MatchResult;
   }
 
-  trace(optStartApplicationStr:string, options = {incremental: true}) {
+  trace(optStartApplicationStr:string, options = {incremental: true}):Trace {
     return this._match(this._getStartExpr(optStartApplicationStr), {
       incremental: options.incremental,
       tracing: true,
-    });
+    }) as Trace;
   }
 
-  _match(startExpr:PExpr, options = {}):MatchResult|any {
+  _match(startExpr:PExpr, options = {}):MatchResult|Trace {
     const opts = {
       tracing: false,
       incremental: true,
@@ -112,12 +113,12 @@ export default class Matcher {
     grammar. If not specified, the grammar's default start rule will be used.
   */
   _getStartExpr(optStartApplicationStr:string):PExpr {
-    const applicationStr = optStartApplicationStr || this.grammar.defaultStartRule;
+    const applicationStr = optStartApplicationStr || this.grammar.defaultStartRule; // ??? string or Rule ?
     if (!applicationStr) {
       throw new Error('Missing start rule argument -- the grammar has no default start rule.');
     }
 
     const startApp = this.grammar.parseApplication(applicationStr);
-    return new pexprs.Seq([startApp, pexprs.end]);
+    return new pexprs.Seq([startApp, pexprs.end]);  // Augment the grammar, with start rule.
   }
 }

@@ -1,7 +1,7 @@
 // The full list of categories from:
 // https://www.unicode.org/Public/UCD/latest/ucd/extracted/DerivedGeneralCategory.txt.
 
-const toRegExp = val => new RegExp(String.raw`\p{${val}}`, 'u');
+const toRegExp = (val:string) => new RegExp(String.raw`\p{${val}}`, 'u');
 
 /*
   grep -v '^#' DerivedGeneralCategory.txt \

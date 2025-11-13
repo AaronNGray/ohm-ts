@@ -1,12 +1,13 @@
 import {abstract} from './common.js';
 import * as pexprs from './pexprs-main.js';
+import PExpr from './pexprs-main.js';
 
 // --------------------------------------------------------------------
 // Operations
 // --------------------------------------------------------------------
 
 // Returns a string representing the PExpr, for use as a UI label, etc.
-pexprs.PExpr.prototype.toDisplayString = abstract('toDisplayString');
+PExpr.prototype.toDisplayString = abstract('toDisplayString');
 
 pexprs.Alt.prototype.toDisplayString = pexprs.Seq.prototype.toDisplayString = function () {
   if (this.source) {

@@ -1,3 +1,5 @@
+import PExpr from './pexprs-main.js';
+
 // --------------------------------------------------------------------
 // Private stuff
 // --------------------------------------------------------------------
@@ -20,8 +22,8 @@ function isValidType(type) {
   return type === 'description' || type === 'string' || type === 'code';
 }
 
-export class Failure {
-  constructor(pexpr, text, type) {
+export default class Failure {
+  constructor(pexpr:PExpr, text, type) {
     if (!isValidType(type)) {
       throw new Error('invalid Failure type: ' + type);
     }
@@ -30,6 +32,10 @@ export class Failure {
     this.type = type;
     this.fluffy = false;
   }
+  pexpr:PExpr;
+  text:string;
+  type:string;
+  fluffy:boolean;
 
   getPExpr() {
     return this.pexpr;
@@ -91,3 +97,5 @@ export class Failure {
     return this.toString() + '#' + this.type;
   }
 }
+
+export type Failures = { [key:string]:Failure };

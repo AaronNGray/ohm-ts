@@ -1,8 +1,9 @@
-import {Trace} from './Trace.js';
+import Trace from './Trace.js';
 import * as common from './common.js';
 import * as errors from './errors.js';
 import {IterationNode, NonterminalNode, TerminalNode} from './nodes.js';
 import * as pexprs from './pexprs-main.js';
+import PExpr from './pexprs-main.js';
 
 // --------------------------------------------------------------------
 // Operations
@@ -24,7 +25,7 @@ import * as pexprs from './pexprs-main.js';
   Note that `State.prototype.eval(expr)`, unlike this method, guarantees that neither the state
   object's bindings nor its input stream's position will change if the expression fails to match.
 */
-pexprs.PExpr.prototype.eval = common.abstract('eval'); // function(state) { ... }
+PExpr.prototype.eval = common.abstract('eval'); // function(state) { ... }
 
 pexprs.any.eval = function (state) {
   const {inputStream} = state;

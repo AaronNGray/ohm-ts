@@ -1,9 +1,9 @@
-export function findIndentation(input) {
+export function findIndentation(input:string) {
   let pos = 0;
   const stack = [0];
   const topOfStack = () => stack[stack.length - 1];
 
-  const result = {};
+  const result:any = {};
 
   const regex = /( *).*(?:$|\r?\n|\r)/g;
   let match;

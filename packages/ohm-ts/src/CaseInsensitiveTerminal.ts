@@ -1,14 +1,13 @@
-import {Failure} from './Failure.js';
+import Failure from './Failure.js';
 import {TerminalNode} from './nodes.js';
 import {assert} from './common.js';
 import MatchState from './MatchState.js';
 import PExpr, {Terminal} from './pexprs-main.js';
 import Grammar from './Grammar.js';
 
-export class CaseInsensitiveTerminal extends PExpr {
-  constructor(param) {
-    super();
-    this.obj = param;
+export class CaseInsensitiveTerminal extends Terminal /* PExpr */  {
+  constructor(param:any) {
+    super(param);
   }
 
   _getString(state:MatchState) {
@@ -40,7 +39,7 @@ export class CaseInsensitiveTerminal extends PExpr {
     return 1;
   }
 
-  substituteParams(actuals) {
+  substituteParams(actuals:number[]):PExpr {
     return new CaseInsensitiveTerminal(this.obj.substituteParams(actuals));
   }
 

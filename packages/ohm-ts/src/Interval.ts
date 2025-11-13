@@ -26,7 +26,7 @@ export default class Interval {
   _contents:string = "";
 
   get sourceString() {
-    return this._sourceString;
+    return this._sourceString;    // ???
   }
 
   get contents():string {
@@ -41,7 +41,7 @@ export default class Interval {
   }
 
   coverageWith(...intervals:Interval[]) {
-    return Interval.coverage(...intervals, this);
+    return Interval.coverage(...intervals, this);   // ??? bug in ohm-js or TypeScript incompatibility or static verses function issue ?
   }
 
   collapsedLeft() {

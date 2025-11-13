@@ -1,4 +1,25 @@
-export class PosInfo {
+import Trace from './Trace.js';
+import {Failures} from './Failure.js';
+import Node from './nodes.js';
+
+export type Memo = { [key:string]:MemoRec; };
+
+export type MemoRec = {
+  isLeftRecursion:boolean;
+  headApplication:any; // ???
+  nextLeftRecursion: any; // ???
+  rightmostFailureOffset:number;
+  examinedLength:number;
+  matchLength:number;
+  value:Node|false;
+  failuresAtRightmostPosition:Failures;
+  traceEntry:Trace;
+
+  isInvolved(applicationMemoKey:string):boolean;
+  updateInvolvedApplicationMemoKeys():void;
+};
+
+export default class PosInfo {
   constructor() {
     this.applicationMemoKeyStack = []; // active applications at this position
     this.memo = {};
@@ -6,6 +27,12 @@ export class PosInfo {
     this.maxRightmostFailureOffset = -1;
     this.currentLeftRecursion = undefined;
   }
+  applicationMemoKeyStack:any[]; // ???
+  memo:any;
+  maxExaminedLength:number;
+  maxRightmostFailureOffset:number;
+  currentLeftRecursion:MemoRec;
+
 
   isActive(application) {
     return this.applicationMemoKeyStack.indexOf(application.toMemoKey()) >= 0;
@@ -19,7 +46,7 @@ export class PosInfo {
     this.applicationMemoKeyStack.pop();
   }
 
-  startLeftRecursion(headApplication, memoRec) {
+  startLeftRecursion(headApplication, memoRec:MemoRec) {
     memoRec.isLeftRecursion = true;
     memoRec.headApplication = headApplication;
     memoRec.nextLeftRecursion = this.currentLeftRecursion;
@@ -32,11 +59,11 @@ export class PosInfo {
       indexOfFirstInvolvedRule
     );
 
-    memoRec.isInvolved = function (applicationMemoKey) {
+    memoRec.isInvolved = function (applicationMemoKey:string):boolean {
       return involvedApplicationMemoKeys.indexOf(applicationMemoKey) >= 0;
     };
 
-    memoRec.updateInvolvedApplicationMemoKeys = function () {
+    memoRec.updateInvolvedApplicationMemoKeys = function ():void {
       for (let idx = indexOfFirstInvolvedRule; idx < applicationMemoKeyStack.length; idx++) {
         const applicationMemoKey = applicationMemoKeyStack[idx];
         if (!this.isInvolved(applicationMemoKey)) {
@@ -52,7 +79,7 @@ export class PosInfo {
 
   // Note: this method doesn't get called for the "head" of a left recursion -- for LR heads,
   // the memoized result (which starts out being a failure) is always used.
-  shouldUseMemoizedResult(memoRec) {
+  shouldUseMemoizedResult(memoRec:MemoRec) {
     if (!memoRec.isLeftRecursion) {
       return true;
     }
@@ -66,7 +93,7 @@ export class PosInfo {
     return true;
   }
 
-  memoize(memoKey, memoRec) {
+  memoize(memoKey:string, memoRec:Partial<MemoRec>):Partial<MemoRec> {
     this.memo[memoKey] = memoRec;
     this.maxExaminedLength = Math.max(this.maxExaminedLength, memoRec.examinedLength);
     this.maxRightmostFailureOffset = Math.max(
@@ -76,7 +103,7 @@ export class PosInfo {
     return memoRec;
   }
 
-  clearObsoleteEntries(pos, invalidatedIdx) {
+  clearObsoleteEntries(pos:number, invalidatedIdx:number):void {
     if (pos + this.maxExaminedLength <= invalidatedIdx) {
       // Optimization: none of the rule applications that were memoized here examined the
       // interval of the input that changed, so nothing has to be invalidated.

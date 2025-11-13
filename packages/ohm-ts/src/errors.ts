@@ -1,11 +1,14 @@
 import {assert} from './common.js';
 import * as pexprs from './pexprs-main.js';
+import Interval from './Interval.js';
+import Grammar from './Grammar.js';
+import {Namespace} from './buildGrammar.js';
 
 // --------------------------------------------------------------------
 // Private stuff
 // --------------------------------------------------------------------
 
-export function createError(message, optInterval) {
+export function createError(message:string, optInterval?:Interval) {
   let e;
   if (optInterval) {
     e = new Error(optInterval.getLineAndColumnMessage() + message);
@@ -27,8 +30,14 @@ export function intervalSourcesDontMatch() {
 
 // Grammar syntax error
 
-export function grammarSyntaxError(matchFailure) {
-  const e = new Error();
+export class SyntaxError extends Error {
+  problems: string[];
+  interval:Interval;
+  // !!! TODO
+}
+
+export function grammarSyntaxError(matchFailure):SyntaxError {
+  const e = new SyntaxError();
   Object.defineProperty(e, 'message', {
     enumerable: true,
     get() {
@@ -47,7 +56,7 @@ export function grammarSyntaxError(matchFailure) {
 
 // Undeclared grammar
 
-export function undeclaredGrammar(grammarName, namespace, interval) {
+export function undeclaredGrammar(grammarName:string, namespace:Namespace, interval:Interval) {
   const message = namespace
     ? `Grammar ${grammarName} is not declared in namespace '${namespace}'`
     : 'Undeclared grammar ' + grammarName;
@@ -56,11 +65,11 @@ export function undeclaredGrammar(grammarName, namespace, interval) {
 
 // Duplicate grammar declaration
 
-export function duplicateGrammarDeclaration(grammar, namespace) {
+export function duplicateGrammarDeclaration(grammar:Grammar, namespace:Namespace) {
   return createError('Grammar ' + grammar.name + ' is already declared in this namespace');
 }
 
-export function grammarDoesNotSupportIncrementalParsing(grammar) {
+export function grammarDoesNotSupportIncrementalParsing(grammar:Grammar) {
   return createError(`Grammar '${grammar.name}' does not support incremental parsing`);
 }
 
@@ -68,7 +77,7 @@ export function grammarDoesNotSupportIncrementalParsing(grammar) {
 
 // Undeclared rule
 
-export function undeclaredRule(ruleName, grammarName, optInterval) {
+export function undeclaredRule(ruleName:string, grammarName:string, optInterval?:Interval) {
   return createError(
     'Rule ' + ruleName + ' is not declared in grammar ' + grammarName,
     optInterval
@@ -77,7 +86,7 @@ export function undeclaredRule(ruleName, grammarName, optInterval) {
 
 // Cannot override undeclared rule
 
-export function cannotOverrideUndeclaredRule(ruleName, grammarName, optSource) {
+export function cannotOverrideUndeclaredRule(ruleName:string, grammarName:string, optSource?:Interval) {
   return createError(
     'Cannot override rule ' + ruleName + ' because it is not declared in ' + grammarName,
     optSource
@@ -86,7 +95,7 @@ export function cannotOverrideUndeclaredRule(ruleName, grammarName, optSource) {
 
 // Cannot extend undeclared rule
 
-export function cannotExtendUndeclaredRule(ruleName, grammarName, optSource) {
+export function cannotExtendUndeclaredRule(ruleName:string, grammarName:string, optSource?:Interval) {
   return createError(
     'Cannot extend rule ' + ruleName + ' because it is not declared in ' + grammarName,
     optSource
@@ -95,7 +104,7 @@ export function cannotExtendUndeclaredRule(ruleName, grammarName, optSource) {
 
 // Duplicate rule declaration
 
-export function duplicateRuleDeclaration(ruleName, grammarName, declGrammarName, optSource) {
+export function duplicateRuleDeclaration(ruleName:string, grammarName:string, declGrammarName:string, optSource?:Interval) {
   let message =
     "Duplicate declaration for rule '" + ruleName + "' in grammar '" + grammarName + "'";
   if (grammarName !== declGrammarName) {
@@ -106,7 +115,7 @@ export function duplicateRuleDeclaration(ruleName, grammarName, declGrammarName,
 
 // Wrong number of parameters
 
-export function wrongNumberOfParameters(ruleName, expected, actual, source) {
+export function wrongNumberOfParameters(ruleName:string, expected:number, actual:number, optSource?:Interval) {
   return createError(
     'Wrong number of parameters for rule ' +
       ruleName +
@@ -115,13 +124,13 @@ export function wrongNumberOfParameters(ruleName, expected, actual, source) {
       ', got ' +
       actual +
       ')',
-    source
+    optSource
   );
 }
 
 // Wrong number of arguments
 
-export function wrongNumberOfArguments(ruleName, expected, actual, expr) {
+export function wrongNumberOfArguments(ruleName:string, expected:number, actual:number, expr:Interval) {
   return createError(
     'Wrong number of arguments for rule ' +
       ruleName +
@@ -136,7 +145,7 @@ export function wrongNumberOfArguments(ruleName, expected, actual, expr) {
 
 // Duplicate parameter names
 
-export function duplicateParameterNames(ruleName, duplicates, source) {
+export function duplicateParameterNames(ruleName:string, duplicates:string[], source:Interval) {
   return createError(
     'Duplicate parameter names in rule ' + ruleName + ': ' + duplicates.join(', '),
     source
@@ -145,7 +154,7 @@ export function duplicateParameterNames(ruleName, duplicates, source) {
 
 // Invalid parameter expression
 
-export function invalidParameter(ruleName, expr) {
+export function invalidParameter(ruleName:string, expr:pexprs.Param) {
   return createError(
     'Invalid parameter to rule ' +
       ruleName +

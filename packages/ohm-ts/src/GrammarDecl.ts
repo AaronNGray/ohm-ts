@@ -4,19 +4,21 @@ import Interval from './Interval.js';
 import {getDuplicates} from './common.js';
 import * as errors from './errors.js';
 import * as pexprs from './pexprs.js';
+import PExpr, {type Formals} from './pexprs-main.js';
 
 // --------------------------------------------------------------------
 // Private Stuff
 // --------------------------------------------------------------------
 
-class Rule {
-  body;
-  formals;
-  description;
-  source:string = "";
-  primitive:boolean = false;
+export interface Rule {   // !!! introduced
+  body:PExpr;
+  formals:Formals;  //
+  description:string;
+  source:Interval;
+  primitive:boolean;
 }
 
+export type Rules = { [key:string]: Rule; };
 
 // Constructors
 
@@ -28,10 +30,13 @@ export default class GrammarDecl {
   name:string;
   source?:Interval;
   superGrammar?:Grammar;
+  rules:{[key: string]: Rule} = {};
+  defaultStartRule?:string;
+
   // Helpers
 
   sourceInterval(startIdx:number, endIdx:number):Interval {
-    return this.source.subInterval(startIdx, endIdx - startIdx);
+    return this.source!.subInterval(startIdx, endIdx - startIdx); // ??? !
   }
 
   ensureSuperGrammar():Grammar {
@@ -43,18 +48,18 @@ export default class GrammarDecl {
         this.name === 'BuiltInRules' ? Grammar.ProtoBuiltInRules : Grammar.BuiltInRules
       );
     }
-    return this.superGrammar;
+    return this.superGrammar!;    // ??? !
   }
 
   ensureSuperGrammarRuleForOverriding(name:string, source:Interval) {
     const ruleInfo = this.ensureSuperGrammar().rules[name];
     if (!ruleInfo) {
-      throw errors.cannotOverrideUndeclaredRule(name, this.superGrammar.name, source);
+      throw errors.cannotOverrideUndeclaredRule(name, this.superGrammar!.name, source); // ??? !
     }
     return ruleInfo;
   }
 
-  installOverriddenOrExtendedRule(name:string, formals, body, source) {
+  installOverriddenOrExtendedRule(name:string, formals:Formals, body:PExpr, source:Interval) {
     const duplicateParameterNames = getDuplicates(formals);
     if (duplicateParameterNames.length > 0) {
       throw errors.duplicateParameterNames(name, duplicateParameterNames, source);
@@ -68,7 +73,7 @@ export default class GrammarDecl {
     return this.install(name, formals, body, ruleInfo.description, source);
   }
 
-  install(name:string, formals, body, description, source:string, primitive:boolean = false) {
+  install(name:string, formals:Formals, body:PExpr, description, source:Interval, primitive:boolean = false) {
     this.rules[name] = {
       body: body.introduceParams(formals),
       formals,
@@ -81,7 +86,7 @@ export default class GrammarDecl {
 
   // Stuff that you should only do once
 
-  withSuperGrammar(superGrammar) {
+  withSuperGrammar(superGrammar:Grammar) {
     if (this.superGrammar) {
       throw new Error('the super grammar of a GrammarDecl cannot be set more than once');
     }
@@ -100,13 +105,13 @@ export default class GrammarDecl {
     return this;
   }
 
-  withSource(source) {
+  withSource(source:string) {
     this.source = new InputStream(source).interval(0, source.length);
     return this;
   }
 
   // Creates a Grammar instance, and if it passes the sanity checks, returns it.
-  build() {
+  build():Grammar {
     const grammar = new Grammar(
       this.name,
       this.ensureSuperGrammar(),
@@ -161,10 +166,10 @@ export default class GrammarDecl {
 
   // Rule declarations
 
-  define(name, formals, body, description, source, primitive) {
+  define(name:string, formals:Formals, body:PExpr, description, source:Interval, primitive?:boolean) {
     this.ensureSuperGrammar();
-    if (this.superGrammar.rules[name]) {
-      throw errors.duplicateRuleDeclaration(name, this.name, this.superGrammar.name, source);
+    if (this.superGrammar!.rules[name]) { // ??? !
+      throw errors.duplicateRuleDeclaration(name, this.name, this.superGrammar!.name, source); // ??? !
     } else if (this.rules[name]) {
       throw errors.duplicateRuleDeclaration(name, this.name, this.name, source);
     }
@@ -175,18 +180,18 @@ export default class GrammarDecl {
     return this.install(name, formals, body, description, source, primitive);
   }
 
-  override(name, formals, body, descIgnored, source) {
+  override(name:string, formals:Formals, body:PExpr, descIgnored, source:Interval) {
     this.ensureSuperGrammarRuleForOverriding(name, source);
     this.installOverriddenOrExtendedRule(name, formals, body, source);
     return this;
   }
 
-  extend(name, formals, fragment, descIgnored, source) {
+  extend(name:string, formals:Formals, fragment:PExpr, descIgnored, source:Interval) {
     const ruleInfo = this.ensureSuperGrammar().rules[name];
     if (!ruleInfo) {
-      throw errors.cannotExtendUndeclaredRule(name, this.superGrammar.name, source);
+      throw errors.cannotExtendUndeclaredRule(name, this.superGrammar!.name, source); // ??? !
     }
-    const body = new pexprs.Extend(this.superGrammar, name, fragment);
+    const body = new pexprs.Extend(this.superGrammar!, name, fragment); // ??? !
     body.source = fragment.source;
     this.installOverriddenOrExtendedRule(name, formals, body, source);
     return this;
