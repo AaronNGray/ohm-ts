@@ -90,7 +90,7 @@ export default class Matcher {
     }) as Trace;
   }
 
-  _match(startExpr:PExpr, options = {}):MatchResult|Trace {
+  _match(startExpr:pexprs.Seq, options = {}):MatchResult|Trace {
     const opts = {
       tracing: false,
       incremental: true,
@@ -112,7 +112,7 @@ export default class Matcher {
     `optStartApplicationStr` is specified, it is a string expressing a rule application in the
     grammar. If not specified, the grammar's default start rule will be used.
   */
-  _getStartExpr(optStartApplicationStr:string):PExpr {
+  _getStartExpr(optStartApplicationStr:string):pexprs.Seq {
     const applicationStr = optStartApplicationStr || this.grammar.defaultStartRule; // ??? string or Rule ?
     if (!applicationStr) {
       throw new Error('Missing start rule argument -- the grammar has no default start rule.');

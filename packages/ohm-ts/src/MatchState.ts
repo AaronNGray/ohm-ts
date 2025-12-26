@@ -2,7 +2,7 @@ import InputStream from './InputStream.js';
 import Matcher from './Matcher.js';
 import MatchResult from './MatchResult.js';
 import Grammar from './Grammar.js';
-import Node from './nodes.js';
+import Node, {NonterminalNode} from './nodes.js';
 
 import PosInfo from './PosInfo.js';
 import Failure, {Failures} from './Failure.js';
@@ -24,7 +24,7 @@ util.awaitBuiltInRules(builtInRules => {
 const applySpaces = new pexprs.Apply('spaces');
 
 export default class MatchState {
-  constructor(matcher:Matcher, startExpr:PExpr, optPositionToRecordFailures) {
+  constructor(matcher:Matcher, startExpr:pexprs.Seq, optPositionToRecordFailures) {
     this.matcher = matcher;
     this.startExpr = startExpr;
 
@@ -60,7 +60,7 @@ export default class MatchState {
   userData:any;
   doNotMemoize:boolean;
 
-  startExpr:PExpr;
+  startExpr:pexprs.Seq;
 
   _bindings:any[];
   _bindingOffsets:number[];
@@ -121,7 +121,7 @@ export default class MatchState {
       return currentApplication.isSyntactic() && !this.inLexifiedContext();
     } else {
       // The top-level context is syntactic if the start application is.
-      return this.startExpr.factors[0].isSyntactic();
+      return (this.startExpr.factors[0] as pexprs.Apply).isSyntactic();   // ??? NonterminalNode.isSyntactic ???
     }
   }
 

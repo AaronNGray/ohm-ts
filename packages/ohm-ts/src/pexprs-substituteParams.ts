@@ -24,7 +24,7 @@ pexprs.any.substituteParams =
       return this;
     };
 
-pexprs.Param.prototype.substituteParams = function (actuals:number[]):PExpr {
+pexprs.Param.prototype.substituteParams = function (actuals:number[]):pexprs.Param {
   return checkNotNull(actuals[this.index]);
 };
 

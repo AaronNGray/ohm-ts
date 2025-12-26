@@ -1,20 +1,20 @@
 import Interval from './Interval.js';
 import Matcher from './Matcher.js';
+import State from './MatchState.js';
 import MatchResult from './MatchResult.js';
 import Trace from './Trace.js';
 import Semantics from './Semantics.js';
 import {Rule, Rules} from './GrammarDecl.js';
 import * as common from './common.js';
+import {StringBuffer} from './common.js';
 import * as errors from './errors.js';
 import {SyntaxError} from './errors.js';
 import * as pexprs from './pexprs.js';
-import Recipe from './pexprs-main.js';
+import PExpr, {Recipe} from './pexprs-main.js';
 
 // --------------------------------------------------------------------
 // Private stuff
 // --------------------------------------------------------------------
-
-const SPECIAL_ACTION_NAMES = ['_iter', '_terminal', '_nonterminal', '_default'];
 
 function getSortedRuleValues(grammar:Grammar):Rule[] {
   return Object.keys(grammar.rules)
@@ -29,11 +29,8 @@ function getSortedRuleValues(grammar:Grammar):Rule[] {
 // See https://v8.dev/features/subsume-json for more details.
 const jsonToJS = (str:string) => str.replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 
-let ohmGrammar:Grammar;
-let buildGrammar;
-
 export default class Grammar {
-  constructor(name:string, superGrammar:Grammar, rules:Rules, optDefaultStartRule:Rule, source?:Interval) {
+  constructor(name:string, superGrammar:Grammar, rules:Rules, optDefaultStartRule?:string, source?:Interval) {
     this.name = name;
     this.superGrammar = superGrammar;
     this.rules = rules;
@@ -57,12 +54,17 @@ export default class Grammar {
   source?:Interval; // ??? - never assigned 
   superGrammar:Grammar;
   rules:Rules;
-  defaultStartRule:Rule; // ??? string ???
-  _matchStateInitializer:any|undefined;
+  defaultStartRule:string;
+  _matchStateInitializer?:(state:State) => any;
   supportsIncrementalParsing:boolean;
 
-  static ProtoBuiltInRules:Rules;   // ??? Rules ???
-  static BuiltInRules:Rules;
+//  static ProtoBuiltInRules:Rules;   // ??? Rules ???
+  static BuiltInRules:Grammar;    // !!! 10 errors if private
+
+  private static ohmGrammar:Grammar;
+  private static buildGrammar: (matchResult:MatchResult, params:any) => PExpr;
+
+  static SPECIAL_ACTION_NAMES = ['_iter', '_terminal', '_nonterminal', '_default'];
 
   matcher():Matcher {
     return new Matcher(this);
@@ -71,7 +73,7 @@ export default class Grammar {
   // Return true if the grammar is a built-in grammar, otherwise false.
   // NOTE: This might give an unexpected result if called before BuiltInRules is defined!
   isBuiltIn():boolean {
-    return this.rules === Grammar.ProtoBuiltInRules || this.rules === Grammar.BuiltInRules;  // ??? .rules
+    return this.rules === Grammar.ProtoBuiltInRules.rules || this.rules === Grammar.BuiltInRules.rules;  // ??? .rules
   }
 
   equals(g:Grammar):boolean {
@@ -107,7 +109,7 @@ export default class Grammar {
     return m.match(optStartApplication);
   }
 
-  trace(input:string, optStartApplication):MatchResult {
+  trace(input:string, optStartApplication?:string):Trace {
     const m = this.matcher();
     m.replaceInputRange(0, 0, input);
     return m.trace(optStartApplication);
@@ -128,7 +130,7 @@ export default class Grammar {
 
     for (const k in actionDict) {
       const v = actionDict[k];
-      const isSpecialAction = SPECIAL_ACTION_NAMES.includes(k);
+      const isSpecialAction = Grammar.SPECIAL_ACTION_NAMES.includes(k);
 
       if (!isSpecialAction && !(k in this.rules)) {
         problems.push(`'${k}' is not a valid semantic action for '${this.name}'`);
@@ -171,7 +173,7 @@ export default class Grammar {
     // All special actions have an expected arity of 0, though all but _terminal
     // are expected to use the rest parameter syntax (e.g. `_iter(...children)`).
     // This is considered to have arity 0, i.e. `((...args) => {}).length` is 0.
-    return SPECIAL_ACTION_NAMES.includes(actionName)
+    return Grammar.SPECIAL_ACTION_NAMES.includes(actionName)
       ? 0
       : this.rules[actionName].body.getArity();
   }
@@ -212,7 +214,7 @@ export default class Grammar {
         operation = body instanceof pexprs.Extend ? 'extend' : 'override';
       }
 
-      const metaInfo:{sourceInterval:number[]} = {};
+      const metaInfo:{sourceInterval?:number[]} = {};
       if (ruleInfo.source && this.source) {
         const adjusted = ruleInfo.source.relativeTo(this.source);
         metaInfo.sourceInterval = [adjusted.startIdx, adjusted.endIdx];
@@ -292,104 +294,105 @@ export default class Grammar {
 
   // Parse a string which expresses a rule application in this grammar, and return the
   // resulting Apply node.
-  parseApplication(str:string) {
-    let app;
+  parseApplication(str:string):pexprs.Apply|PExpr {
+    let app:pexprs.Apply|PExpr;
     if (str.indexOf('<') === -1) {
       // simple application
       app = new pexprs.Apply(str);
     } else {
       // parameterized application
-      const cst = ohmGrammar.match(str, 'Base_application');
-      app = buildGrammar(cst, {});
+      const cst = Grammar.ohmGrammar.match(str, 'Base_application');
+      app = Grammar.buildGrammar(cst, {});
     }
 
     // Ensure that the application is valid.
-    if (!(app.ruleName in this.rules)) {
-      throw errors.undeclaredRule(app.ruleName, this.name);
+    if (!((app as pexprs.Apply).ruleName in this.rules)) {
+      throw errors.undeclaredRule((app as pexprs.Apply).ruleName, this.name);
     }
-    const {formals} = this.rules[app.ruleName];
-    if (formals.length !== app.args.length) {
-      const {source} = this.rules[app.ruleName];
+    const {formals} = this.rules[(app as pexprs.Apply).ruleName];
+    if (formals.length !== (app as pexprs.Apply).args.length) {
+      const {source} = this.rules[(app as pexprs.Apply).ruleName];
       throw errors.wrongNumberOfParameters(
-        app.ruleName,
+        (app as pexprs.Apply).ruleName,
         formals.length,
-        app.args.length,
+        (app as pexprs.Apply).args.length,
         source
       );
     }
     return app;
   }
 
-  _setUpMatchState(state) {
+  _setUpMatchState(state:State) {
     if (this._matchStateInitializer) {
       this._matchStateInitializer(state);
     }
   }
+  // The following grammar contains a few rules that couldn't be written  in "userland".
+  // At the bottom of src/main.js, we create a sub-grammar of this grammar that's called
+  // `BuiltInRules`. That grammar contains several convenience rules, e.g., `letter` and
+  // `digit`, and is implicitly the super-grammar of any grammar whose super-grammar
+  // isn't specified.
+
+  static ProtoBuiltInRules = new Grammar(      /// !!! TODO: Grammer .v. Rules
+    'ProtoBuiltInRules', // name
+    undefined, // supergrammar
+    {
+      "any": {
+        body: pexprs.any,
+        formals: [],
+        description: 'any character',
+        primitive: true,
+      },
+      end: {
+        body: pexprs.end,
+        formals: [],
+        description: 'end of input',
+        primitive: true,
+      },
+
+      caseInsensitive: {
+        body: new pexprs.CaseInsensitiveTerminal(new pexprs.Param(0)),
+        formals: ['str'],
+        primitive: true,
+      },
+      lower: {
+        body: new pexprs.UnicodeChar('Ll'),
+        formals: [],
+        description: 'a lowercase letter',
+        primitive: true,
+      },
+      upper: {
+        body: new pexprs.UnicodeChar('Lu'),
+        formals: [],
+        description: 'an uppercase letter',
+        primitive: true,
+      },
+      // Union of Lt (titlecase), Lm (modifier), and Lo (other), i.e. any letter not in Ll or Lu.
+      unicodeLtmo: {
+        body: new pexprs.UnicodeChar('Ltmo'),
+        formals: [],
+        description: 'a Unicode character in Lt, Lm, or Lo',
+        primitive: true,
+      },
+
+      // These rules are not truly primitive (they could be written in userland) but are defined
+      // here for bootstrapping purposes.
+      spaces: {
+        body: new pexprs.Star(new pexprs.Apply('space')),
+        formals: [],
+      },
+      space: {
+        body: new pexprs.Range('\x00', ' '),
+        formals: [],
+        description: 'a space',
+      },
+    }
+  );
+  // This method is called from main.js once Ohm has loaded.
+  static initApplicationParser(grammar:Grammar, builderFn:any) {
+    Grammar.ohmGrammar = grammar;
+    Grammar.buildGrammar = builderFn;
+  }
 }
 
-// The following grammar contains a few rules that couldn't be written  in "userland".
-// At the bottom of src/main.js, we create a sub-grammar of this grammar that's called
-// `BuiltInRules`. That grammar contains several convenience rules, e.g., `letter` and
-// `digit`, and is implicitly the super-grammar of any grammar whose super-grammar
-// isn't specified.
-Grammar.ProtoBuiltInRules = new Grammar(      /// !!! TODO: Grammer .v. Rules
-  'ProtoBuiltInRules', // name
-  undefined, // supergrammar
-  {
-    any: {
-      body: pexprs.any,
-      formals: [],
-      description: 'any character',
-      primitive: true,
-    },
-    end: {
-      body: pexprs.end,
-      formals: [],
-      description: 'end of input',
-      primitive: true,
-    },
 
-    caseInsensitive: {
-      body: new pexprs.CaseInsensitiveTerminal(new pexprs.Param(0)),
-      formals: ['str'],
-      primitive: true,
-    },
-    lower: {
-      body: new pexprs.UnicodeChar('Ll'),
-      formals: [],
-      description: 'a lowercase letter',
-      primitive: true,
-    },
-    upper: {
-      body: new pexprs.UnicodeChar('Lu'),
-      formals: [],
-      description: 'an uppercase letter',
-      primitive: true,
-    },
-    // Union of Lt (titlecase), Lm (modifier), and Lo (other), i.e. any letter not in Ll or Lu.
-    unicodeLtmo: {
-      body: new pexprs.UnicodeChar('Ltmo'),
-      formals: [],
-      description: 'a Unicode character in Lt, Lm, or Lo',
-      primitive: true,
-    },
-
-    // These rules are not truly primitive (they could be written in userland) but are defined
-    // here for bootstrapping purposes.
-    spaces: {
-      body: new pexprs.Star(new pexprs.Apply('space')),
-      formals: [],
-    },
-    space: {
-      body: new pexprs.Range('\x00', ' '),
-      formals: [],
-      description: 'a space',
-    },
-  }
-);
-
-// This method is called from main.js once Ohm has loaded.
-Grammar.initApplicationParser = function (grammar, builderFn) {
-  ohmGrammar = grammar;
-  buildGrammar = builderFn;
-};

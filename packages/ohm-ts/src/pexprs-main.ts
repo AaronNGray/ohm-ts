@@ -88,7 +88,7 @@ function resolveDuplicatedNames(argumentNameList:string[]):void {
 
 // General stuff
 
-export type Formals = any[];
+export type Formals = string[];
 export type Recipe = any[];   // TODO: move to makeRecipe.ts rename to Recipe.ts 
 
 export default abstract class PExpr {
@@ -186,6 +186,9 @@ export const any = new Any();
 // End
 
 export class End extends PExpr {
+  constructor() {
+    super();
+  }
   allowsSkippingPrecedingSpace():boolean {
     return false;
   }
@@ -236,10 +239,11 @@ export const end = new End();
 // Terminals
 
 export class Terminal extends PExpr {
-  constructor(obj:any) {    // ???
+  constructor(obj:string|number|Param) {
     super();
     this.obj = obj;
   }
+  obj:string|number|Param;
 
   allowsSkippingPrecedingSpace():boolean {
     return false;
@@ -265,11 +269,11 @@ export class Terminal extends PExpr {
   eval(state:MatchState):boolean {
     const {inputStream} = state;
     const origPos = inputStream.pos;
-    if (!inputStream.matchString(this.obj)) {
+    if (!inputStream.matchString(this.obj as string)) { // ???
       state.processFailure(origPos, this);
       return false;
     } else {
-      state.pushBinding(new TerminalNode(this.obj.length), origPos);
+      state.pushBinding(new TerminalNode(this.obj as number), origPos); // ???
       return true;
     }
   }
@@ -297,7 +301,6 @@ export class Terminal extends PExpr {
   toString() {
     return JSON.stringify(this.obj);
   }
-  obj:any; // ???
 }
 
 // Ranges
@@ -408,7 +411,7 @@ export class Param extends PExpr {
   outputRecipe(formals:Formals, grammarInterval:Interval):Recipe {
     return ['param', getMetaInfo(this, grammarInterval), this.index];
   }
-  substituteParams(actuals:number[]):PExpr {
+  substituteParams(actuals:number[]):this {     // !!! should we be returning this rather than PExpr's or Param ???
     return checkNotNull(actuals[this.index]);
   }
   toArgumentNameList(firstArgIndex:number, noDupCheck:boolean):string[] {
@@ -446,7 +449,7 @@ export class Alt extends PExpr {
     const arity = this.terms[0].getArity();
     for (let idx = 0; idx < this.terms.length; idx++) {
       const term = this.terms[idx];
-      term.assertChoicesHaveUniformArity();   // ???
+      term.assertChoicesHaveUniformArity(ruleName);   // ??? ruleName ???
       const otherArity = term.getArity();
       if (arity !== otherArity) {
         throw errors.inconsistentArity(ruleName, arity, otherArity, term);
@@ -539,7 +542,7 @@ export class Alt extends PExpr {
 // Extend is an implementation detail of rule extension
 
 export class Extend extends Alt {
-  constructor(superGrammar:Grammar, name:string, body) {
+  constructor(superGrammar:Grammar, name:string, body:PExpr) {
     const origBody = superGrammar.rules[name].body;
     super([body, origBody]);
 
@@ -549,7 +552,7 @@ export class Extend extends Alt {
   }
   superGrammar:Grammar;
   name:string;
-  body;
+  body:PExpr;
 
   assertChoicesHaveUniformArity(ruleName:string) {
     // Extend is a special case of Alt that's guaranteed to have exactly two
@@ -652,7 +655,7 @@ export class Seq extends PExpr {
     ];
   }
   substituteParams(actuals:number[]):PExpr {
-    return new pexprs.Seq(this.factors.map(factor => factor.substituteParams(actuals)));
+    return new Seq(this.factors.map(factor => factor.substituteParams(actuals)));
   }
   toArgumentNameList(firstArgIndex:number, noDupCheck:boolean):string[] {
     // Generate the argument name list, without worrying about duplicates.
@@ -787,7 +790,7 @@ export abstract class Iter extends PExpr {
     ];
   }
   substituteParams(actuals:number[]):PExpr {
-    return new this.constructor(this.expr.substituteParams(actuals));
+    return new Any();
   }
   toArgumentNameList(firstArgIndex:number, noDupCheck:boolean):string[] {
     const argumentNameList = this.expr
@@ -821,6 +824,9 @@ export class Star extends Iter {
   _isNullable(grammar:Grammar, memo:any):boolean {
     return true;
   }
+  substituteParams(actuals:number[]):PExpr {
+    return new Star(this.expr.substituteParams(actuals));
+  }
 }
 export class Plus extends Iter {
   operator = '+';
@@ -832,13 +838,20 @@ export class Plus extends Iter {
   _isNullable(grammar:Grammar, memo:any):boolean {
     return false;
   }
+  substituteParams(actuals:number[]):PExpr {
+    return new Plus(this.expr.substituteParams(actuals));
+  }
 }
 export class Opt extends Iter {
   operator = '?';
   minNumMatches = 0;
   maxNumMatches = 1;
+
   _isNullable(grammar:Grammar, memo:any):boolean {
     return true;
+  }
+  substituteParams(actuals:number[]):PExpr {
+    return new Opt(this.expr.substituteParams(actuals));
   }
   toArgumentNameList(firstArgIndex:number, noDupCheck:boolean):string[] {
     return this.expr.toArgumentNameList(firstArgIndex, noDupCheck).map(argName => {
@@ -911,7 +924,7 @@ export class Not extends PExpr {
     ];
   }
   substituteParams(actuals:number[]):PExpr {
-    return new this.constructor(this.expr.substituteParams(actuals));
+    return new Not(this.expr.substituteParams(actuals));
   }
   toArgumentNameList(firstArgIndex:number, noDupCheck:boolean):string[] {
     return [];
@@ -977,7 +990,7 @@ export class Lookahead extends PExpr {
     ];
   }
   substituteParams(actuals:number[]):PExpr {
-    return new this.constructor(this.expr.substituteParams(actuals));
+    return new Lookahead(this.expr.substituteParams(actuals));
   }
   toArgumentNameList(firstArgIndex:number, noDupCheck:boolean):string[] {
     return this.expr.toArgumentNameList(firstArgIndex, noDupCheck);
@@ -1005,7 +1018,7 @@ export class Lex extends PExpr {
   allowsSkippingPrecedingSpace():boolean {
     return true;
   }
-  assertChoicesHaveUniformArity(ruleName:string) {}
+  assertChoicesHaveUniformArity(ruleName:string):void {}
   _assertAllApplicationsAreValid(ruleName:string, grammar:Grammar):void {
     PExpr.lexifyCount++;
     this.expr._assertAllApplicationsAreValid(ruleName, grammar);
@@ -1038,7 +1051,7 @@ export class Lex extends PExpr {
     ];
   }
   substituteParams(actuals:number[]):PExpr {
-    return new this.constructor(this.expr.substituteParams(actuals)); // ??? how do you call the constructor ? Self() ?
+    return new Lex(this.expr.substituteParams(actuals));
   }
   toArgumentNameList(firstArgIndex:number, noDupCheck:boolean):string[] {
     return this.expr.toArgumentNameList(firstArgIndex, noDupCheck);
@@ -1074,7 +1087,7 @@ export class Apply extends PExpr {
     ruleName:string,
     grammar:Grammar,
     skipSyntacticCheck:boolean = false
-  ) {
+  ):void {
     const ruleInfo = grammar.rules[this.ruleName];
     const isContextSyntactic = isSyntactic(ruleName) && Apply.lexifyCount === 0;  // !!! check logic
 
@@ -1130,7 +1143,7 @@ export class Apply extends PExpr {
       }
     });
   }
-  assertChoicesHaveUniformArity(ruleName:string) {
+  assertChoicesHaveUniformArity(ruleName:string):void {
     // The arities of the parameter expressions is required to be 1 by
     // `assertAllApplicationsAreValid()`.
   }
@@ -1161,7 +1174,7 @@ export class Apply extends PExpr {
     }
     return app.reallyEval(state);
   }
-  handleCycle(state:State) {
+  handleCycle(state:State):boolean {
     const posInfo = state.getCurrentPosInfo();
     const {currentLeftRecursion} = posInfo;
     const memoKey = this.toMemoKey();
@@ -1183,7 +1196,7 @@ export class Apply extends PExpr {
     }
     return state.useMemoizedResult(state.inputStream.pos, memoRec);
   }
-  reallyEval(state:State) {
+  reallyEval(state:State):boolean {
     const {inputStream} = state;
     const origPos = inputStream.pos;
     const origPosInfo = state.getCurrentPosInfo();
@@ -1261,7 +1274,7 @@ export class Apply extends PExpr {
 
     return succeeded;
   }
-  evalOnce = function (expr:PExpr, state) {
+  evalOnce(expr:PExpr, state:State):Node|false {
     const {inputStream} = state;
     const origPos = inputStream.pos;
 
@@ -1275,7 +1288,7 @@ export class Apply extends PExpr {
       return false;
     }
   }
-  growSeedResult = function (body:PExpr, state:State, origPos:number, lrMemoRec:LRMemoRec, newValue:Node|false):Node|false {
+  growSeedResult(body:PExpr, state:State, origPos:number, lrMemoRec:MemoRec, newValue:Node|false):Node|false {
     if (!newValue) {
       return false;
     }
@@ -1336,7 +1349,7 @@ export class Apply extends PExpr {
       return this;
     }
   }
-  _isNullable(grammar:Grammar, memo:any) {
+  _isNullable(grammar:Grammar, memo:any):boolean {
     const key = this.toMemoKey()!;    // ??? !
     if (!Object.prototype.hasOwnProperty.call(memo, key)) {
       const {body} = grammar.rules[this.ruleName];
@@ -1346,12 +1359,12 @@ export class Apply extends PExpr {
     }
     return memo[key];
   }
-  isSyntactic() {
+  isSyntactic():boolean {
     return common.isSyntactic(this.ruleName);
   }
 
   // This method just caches the result of `this.toString()` in a non-enumerable property.
-  toMemoKey() {
+  toMemoKey():string {
     if (!this._memoKey) {
       Object.defineProperty(this, '_memoKey', {value: this.toString()});
     }
@@ -1371,7 +1384,7 @@ export class Apply extends PExpr {
       return this;
     } else {
       const args = this.args.map(arg => arg.substituteParams(actuals));
-      return new pexprs.Apply(this.ruleName, args);
+      return new Apply(this.ruleName, args);
     }
   }
   toArgumentNameList(firstArgIndex:number, noDupCheck:boolean):string[] {
@@ -1428,7 +1441,7 @@ export class UnicodeChar extends PExpr {
   assertChoicesHaveUniformArity(ruleName:string) {}
   _assertAllApplicationsAreValid(ruleName:string, grammar:Grammar):void {}
   assertIteratedExprsAreNotNullable(grammar:Grammar):void {}
-  eval(state) {
+  eval(state:State):boolean {
     const {inputStream} = state;
     const origPos = inputStream.pos;
     const ch = inputStream.next();

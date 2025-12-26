@@ -13,9 +13,9 @@ import PExpr, {type Formals} from './pexprs-main.js';
 export interface Rule {   // !!! introduced
   body:PExpr;
   formals:Formals;  //
-  description:string;
-  source:Interval;
-  primitive:boolean;
+  description?:string;
+  source?:Interval;
+  primitive?:boolean;
 }
 
 export type Rules = { [key:string]: Rule; };
@@ -73,7 +73,7 @@ export default class GrammarDecl {
     return this.install(name, formals, body, ruleInfo.description, source);
   }
 
-  install(name:string, formals:Formals, body:PExpr, description, source:Interval, primitive:boolean = false) {
+  install(name:string, formals:Formals, body:PExpr, description:string, source:Interval, primitive:boolean = false) {
     this.rules[name] = {
       body: body.introduceParams(formals),
       formals,
@@ -148,7 +148,7 @@ export default class GrammarDecl {
       Object.keys(grammar.rules).forEach(ruleName => {
         const {body} = grammar.rules[ruleName];
         try {
-          body.assertIteratedExprsAreNotNullable(grammar, []);
+          body.assertIteratedExprsAreNotNullable(grammar); // ??? "(grammar, [])"
         } catch (e) {
           grammarErrors.push(e);
         }

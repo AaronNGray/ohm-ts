@@ -1,3 +1,4 @@
+import {Buffer} from 'node:buffer';
 import ohmGrammar from '../dist/ohm-grammar.js';
 import {buildGrammar, Namespace} from './buildGrammar.js';
 import * as common from './common.js';
@@ -12,11 +13,6 @@ import * as util from './util.js';
 import './semanticsDeferredInit.js'; // TODO: Clean this up.
 Grammar.initApplicationParser(ohmGrammar, buildGrammar);
 
-const isBuffer = (obj:object) =>
-  !!obj.constructor &&
-  typeof obj.constructor.isBuffer === 'function' &&
-  obj.constructor.isBuffer(obj);
-
 function compileAndLoad(source:string, namespace:Namespace) {
   const m = ohmGrammar.match(source, 'Grammars');
   if (m.failed()) {
@@ -25,7 +21,7 @@ function compileAndLoad(source:string, namespace:Namespace) {
   return buildGrammar(m, namespace);
 }
 
-export function grammar(source:string, optNamespace?:Namespace):Grammar {
+export function grammar(source:string|Buffer, optNamespace?:Namespace):Grammar {
   const ns = grammars(source, optNamespace);
 
   // Ensure that the source contained no more than one grammar definition.
@@ -43,11 +39,11 @@ export function grammar(source:string, optNamespace?:Namespace):Grammar {
   return ns[grammarNames[0]]; // Return the one and only grammar.
 }
 
-export function grammars(source:string|Interval, optNamespace?:Namespace):Record<string, Grammar> {
+export function grammars(source:string|Buffer, optNamespace?:Namespace):Record<string, Grammar> {
   const ns = Object.create(optNamespace || {});
   if (typeof source !== 'string') {
     // For convenience, detect Node.js Buffer objects and automatically call toString().
-    if (isBuffer(source)) {
+    if (Buffer.isBuffer(source)) {
       source = source.toString();
     } else {
       throw new TypeError(

@@ -120,7 +120,7 @@ export default class Trace {
   }
 
   // Record the trace information for the terminating condition of the LR loop.
-  recordLRTermination(ruleBodyTrace:Trace, value:any) {
+  recordLRTermination(ruleBodyTrace:Trace, value:any):void {
     this.terminatingLREntry = new Trace(
       this.input,
       this.pos,
@@ -143,7 +143,7 @@ export default class Trace {
   // representing the depth of the node in the tree. (The root node has depth 0.) `optThisArg`, if
   // specified, is the value to use for `this` when executing the visitor functions.
   walk(visitorObjOrFn:(node:Node, parent:Node, depth:number) => string, optThisArg?:Trace):void {
-    let visitor = visitorObjOrFn;
+    let visitor:any = visitorObjOrFn;  // ??? any ???
     if (typeof visitor === 'function') {
       visitor = {enter: visitor};
     }

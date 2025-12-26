@@ -2,6 +2,7 @@ import operationsAndAttributesGrammar from '../dist/operations-and-attributes.js
 import Grammar from './Grammar.js';
 import Semantics from './Semantics.js';
 import type Formals from './pexprs-main.js';
+import * as pexprs from './pexprs.js';
 
 initBuiltInSemantics(Grammar.BuiltInRules);
 initPrototypeParser(operationsAndAttributesGrammar); // requires BuiltInSemantics
@@ -17,10 +18,10 @@ function initPrototypeParser(grammar:Grammar) {
         formals: [],
       };
     },
-    OperationSignature(name, optFormals?:Formals) {
+    OperationSignature(name, optFormals?:any) {   // ??? any ???
       return {
         name: name.parse(),
-        formals: optFormals.children.map(c => c.parse())[0] || [],
+        formals: optFormals!.children.map(c => c.parse())[0] || [],
       };
     },
     Formals(oparen, fs, cparen) {

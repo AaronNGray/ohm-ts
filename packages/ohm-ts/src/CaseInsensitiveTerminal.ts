@@ -2,20 +2,22 @@ import Failure from './Failure.js';
 import {TerminalNode} from './nodes.js';
 import {assert} from './common.js';
 import MatchState from './MatchState.js';
-import PExpr, {Terminal} from './pexprs-main.js';
+import PExpr, {Any, Terminal, Param} from './pexprs-main.js';
+import * as pexpr from './pexprs-main.js';
 import Grammar from './Grammar.js';
+import {MemoRec} from './PosInfo.js';
 
-export class CaseInsensitiveTerminal extends Terminal /* PExpr */  {
-  constructor(param:any) {
-    super(param);
+export class CaseInsensitiveTerminal extends Terminal  {
+  constructor(obj:Param) {
+    super(obj.toString());  // ???
   }
+  declare obj:Param;    // ???
 
-  _getString(state:MatchState) {
+  _getString(state:MatchState):string {
     const terminal = state.currentApplication().args[this.obj.index];
     assert(terminal instanceof Terminal, 'expected a Terminal expression');
     return terminal.obj;
   }
-
   // Implementation of the PExpr API
 
   allowsSkippingPrecedingSpace() {
@@ -55,7 +57,7 @@ export class CaseInsensitiveTerminal extends Terminal /* PExpr */  {
     );
   }
 
-  _isNullable(grammar, memo):boolean {
+  _isNullable(grammar:Grammar, memo:MemoRec):boolean {
     return this.obj._isNullable(grammar, memo);
   }
 }

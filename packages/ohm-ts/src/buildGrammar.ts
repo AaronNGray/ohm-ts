@@ -1,16 +1,19 @@
 import ohmGrammar from '../dist/ohm-grammar.js';
 import Builder from './Builder.js';
+import MatchResult from './Matcher.js';
 import Matcher from './Matcher.js';
 import * as common from './common.js';
 import * as errors from './errors.js';
 import Grammar from './Grammar.js';
 import GrammarDecl from './GrammarDecl.js';
-import PExpr from './pexprs-main.js';
+import Interval from './Interval.js';
+import {Wrapper} from './Semantics.js';
+import PExpr, {Formals} from './pexprs-main.js';
 import * as pexprs from './pexprs.js';
 
 export type Namespace = { [key: string]:Grammar};
 
-const superSplicePlaceholder = Object.create(pexprs.PExpr.prototype);  // ???
+const superSplicePlaceholder = Object.create(PExpr.prototype);  // ???
 
 function namespaceHas(ns:Namespace, name:string):boolean {
   // Look for an enumerable property, anywhere in the prototype chain.
@@ -20,24 +23,32 @@ function namespaceHas(ns:Namespace, name:string):boolean {
   return false;
 }
 
+abstract class Visitor {
+  abstract visit(...params:any[]):any;
+  source:Interval;
+};
+
+class Visitors { children:Visitor[]; };
+
+
 // Returns a Grammar instance (i.e., an object with a `match` method) for
 // `tree`, which is the concrete syntax tree of a user-written grammar.
 // The grammar will be assigned into `namespace` under the name of the grammar
 // as specified in the source.
-export function buildGrammar(match:Matcher, namespace:Namespace, optOhmGrammarForTesting?:Grammar) {
+export function buildGrammar(match:MatchResult, namespace:Namespace, optOhmGrammarForTesting?:Grammar):any {
   const builder = new Builder();
   let decl:GrammarDecl;
-  let currentRuleName;
-  let currentRuleFormals;
+  let currentRuleName:string;
+  let currentRuleFormals:Formals;
   let overriding = false;
-  const metaGrammar = optOhmGrammarForTesting || ohmGrammar;
+  const metaGrammar:Grammar = optOhmGrammarForTesting || ohmGrammar;
 
   // A visitor that produces a Grammar instance from the CST.
   const helpers = metaGrammar.createSemantics().addOperation('visit', {
-    Grammars(grammarIter):Grammar[] {
+    Grammars(grammarIter:Visitors):Grammar[] {
       return grammarIter.children.map(c => c.visit());
     },
-    Grammar(id, s, _open, rules, _close):Grammar {
+    Grammar(id:Visitor, s:Wrapper, _open, rules:Visitors, _close):Grammar {
       const grammarName = id.visit();
       decl = builder.newGrammar(grammarName);
       s.child(0) && s.child(0).visit();
@@ -51,7 +62,7 @@ export function buildGrammar(match:Matcher, namespace:Namespace, optOhmGrammarFo
       return g;
     },
 
-    SuperGrammar(_, n) {
+    SuperGrammar(_, n:Visitor) {
       const superGrammarName = n.visit();
       if (superGrammarName === 'null') {
         decl.withSuperGrammar(null);
@@ -63,7 +74,7 @@ export function buildGrammar(match:Matcher, namespace:Namespace, optOhmGrammarFo
       }
     },
 
-    Rule_define(n, fs, d, _, b) {
+    Rule_define(n:Visitor, fs:Visitors, d:Visitors, _, b) {
       currentRuleName = n.visit();
       currentRuleFormals = fs.children.map(c => c.visit())[0] || [];
       // If there is no default start rule yet, set it now. This must be done before visiting
@@ -76,7 +87,7 @@ export function buildGrammar(match:Matcher, namespace:Namespace, optOhmGrammarFo
       const source = this.source.trimmed();
       return decl.define(currentRuleName, currentRuleFormals, body, description, source);
     },
-    Rule_override(n, fs, _, b) {
+    Rule_override(n:Visitor, fs, _, b) {
       currentRuleName = n.visit();
       currentRuleFormals = fs.children.map(c => c.visit())[0] || [];
 
@@ -88,17 +99,17 @@ export function buildGrammar(match:Matcher, namespace:Namespace, optOhmGrammarFo
       overriding = false;
       return decl.override(currentRuleName, currentRuleFormals, body, null, source);
     },
-    Rule_extend(n, fs, _, b) {
+    Rule_extend(n:Visitor, fs:Visitors, _, b:Visitor) {
       currentRuleName = n.visit();
       currentRuleFormals = fs.children.map(c => c.visit())[0] || [];
       const body = b.visit();
       const source = this.source.trimmed();
       return decl.extend(currentRuleName, currentRuleFormals, body, null, source);
     },
-    RuleBody(_, terms) {
+    RuleBody(_, terms:Visitor) {
       return builder.alt(...terms.visit()).withSource(this.source);
     },
-    OverrideRuleBody(_, terms) {
+    OverrideRuleBody(_, terms:Visitor) {
       const args = terms.visit();
 
       // Check if the super-splice operator (`...`) appears in the terms.
@@ -122,19 +133,19 @@ export function buildGrammar(match:Matcher, namespace:Namespace, optOhmGrammarFo
         return builder.alt(...args).withSource(this.source);
       }
     },
-    Formals(opointy, fs, cpointy) {
+    Formals(opointy, fs:Visitor, cpointy) {
       return fs.visit();
     },
 
-    Params(opointy, ps, cpointy) {
+    Params(opointy, ps:Visitor, cpointy) {
       return ps.visit();
     },
 
-    Alt(seqs) {
+    Alt(seqs:Visitor) {
       return builder.alt(...seqs.visit()).withSource(this.source);
     },
 
-    TopLevelTerm_inline(b, n) {
+    TopLevelTerm_inline(b, n:Visitor) {
       const inlineRuleName = currentRuleName + '_' + n.visit();
       const body = b.visit();
       const source = this.source.trimmed();
@@ -146,74 +157,74 @@ export function buildGrammar(match:Matcher, namespace:Namespace, optOhmGrammarFo
       } else {
         decl.define(inlineRuleName, currentRuleFormals, body, null, source);
       }
-      const params = currentRuleFormals.map(formal => builder.app(formal));
+      const params = currentRuleFormals.map((formal:string) => builder.app(formal)); // ??? formal:string ??? PExpr .v. PExpr.Apply
       return builder.app(inlineRuleName, params).withSource(body.source);
     },
     OverrideTopLevelTerm_superSplice(_) {
       return superSplicePlaceholder;
     },
 
-    Seq(expr:PExpr) {
+    Seq(expr:Visitors) {
       return builder.seq(...expr.children.map(c => c.visit())).withSource(this.source);
     },
 
-    Iter_star(x, _) {
+    Iter_star(x:Visitor, _) {
       return builder.star(x.visit()).withSource(this.source);
     },
-    Iter_plus(x, _) {
+    Iter_plus(x:Visitor, _) {
       return builder.plus(x.visit()).withSource(this.source);
     },
-    Iter_opt(x, _) {
+    Iter_opt(x:Visitor, _) {
       return builder.opt(x.visit()).withSource(this.source);
     },
 
-    Pred_not(_, x) {
+    Pred_not(_, x:Visitor) {
       return builder.not(x.visit()).withSource(this.source);
     },
-    Pred_lookahead(_, x) {
+    Pred_lookahead(_, x:Visitor) {
       return builder.lookahead(x.visit()).withSource(this.source);
     },
 
-    Lex_lex(_, x) {
+    Lex_lex(_, x:Visitor) {
       return builder.lex(x.visit()).withSource(this.source);
     },
 
-    Base_application(rule, ps) {
+    Base_application(rule:Visitor, ps) {
       const params = ps.children.map(c => c.visit())[0] || [];
       return builder.app(rule.visit(), params).withSource(this.source);
     },
-    Base_range(from, _, to) {
+    Base_range(from:Visitor, _, to:Visitor) {
       return builder.range(from.visit(), to.visit()).withSource(this.source);
     },
-    Base_terminal(expr) {
+    Base_terminal(expr:Visitor) {
       return builder.terminal(expr.visit()).withSource(this.source);
     },
-    Base_paren(open, x, close) {
+    Base_paren(open, x:Visitor, close) {
       return x.visit();
     },
 
-    ruleDescr(open, t, close) {
+    ruleDescr(open, t:Visitor, close) {
       return t.visit();
     },
     ruleDescrText(_) {
       return this.sourceString.trim();
     },
 
-    caseName(_, space1, n, space2, end) {
+    caseName(_, space1, n:Visitor, space2, end) {
       return n.visit();
     },
 
-    name(first, rest) {
+    name(_, rest) {
       return this.sourceString;
     },
-    nameFirst(expr) {},
-    nameRest(expr) {},
+    nameFirst(_) {},
+    nameRest(_) {},
 
-    terminal(open, cs, close) {
+    terminal(_, cs:Visitors, __) {
       return cs.children.map(c => c.visit()).join('');
     },
 
-    oneCharTerminal(open, c, close) {
+    oneCharTerminal(open, c:Visitor, close) {
       return c.visit();
     },
 
@@ -228,7 +239,7 @@ export function buildGrammar(match:Matcher, namespace:Namespace, optOhmGrammarFo
       }
     },
 
-    NonemptyListOf(x, _, xs) {
+    NonemptyListOf(x:Visitor, _, xs:Visitors) {
       return [x.visit()].concat(xs.children.map(c => c.visit()));
     },
     EmptyListOf():any[] {
@@ -237,7 +248,7 @@ export function buildGrammar(match:Matcher, namespace:Namespace, optOhmGrammarFo
 
     _terminal():string {
       return this.sourceString;
-    },
+    }
   });
 
   return helpers(match).visit();

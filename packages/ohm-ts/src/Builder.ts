@@ -1,6 +1,7 @@
 import Grammar from './Grammar.js';
 import GrammarDecl, {Rule, Rules} from './GrammarDecl.js';
 import PExpr from './pexprs-main.js';
+import Interval from './Interval.js';
 import * as pexprs from './pexprs.js';
 
 // --------------------------------------------------------------------
@@ -25,7 +26,7 @@ export default class Builder {
     if (superGrammar) {
       // `superGrammar` may be a recipe (i.e. an Array), or an actual grammar instance.
       gDecl.withSuperGrammar(
-        superGrammar instanceof Grammar ? superGrammar : this.fromRecipe(superGrammar)
+        superGrammar instanceof Grammar ? superGrammar : this.fromRecipe(superGrammar) as Grammar
       );
     }
     if (defaultStartRule) {
@@ -46,7 +47,7 @@ export default class Builder {
       const formals = ruleRecipe[3];
       const body = this.fromRecipe(ruleRecipe[4]);
 
-      let source;
+      let source:Interval;
       if (gDecl.source && metaInfo && metaInfo.sourceInterval) {
         source = gDecl.source.subInterval(
           metaInfo.sourceInterval[0],
@@ -74,7 +75,7 @@ export default class Builder {
   alt(...termArgs:PExpr[]):pexprs.Alt {   // ??? !!!
     let terms = [];
     for (let arg of termArgs) {
-      arg = arg instanceof PExpr ? arg : this.fromRecipe(arg);
+      arg = arg instanceof PExpr ? arg : this.fromRecipe(arg) as PExpr;
       if (arg instanceof pexprs.Alt) {
         terms = terms.concat(arg.terms);
       } else {
@@ -87,7 +88,7 @@ export default class Builder {
   seq(...factorArgs:PExpr[]):pexprs.Seq | PExpr {  // ??? !!!
     let factors:PExpr[] = [];
     for (let arg of factorArgs) {
-      arg = arg instanceof PExpr ? arg : this.fromRecipe(arg);
+      arg = arg instanceof PExpr ? arg : this.fromRecipe(arg) as PExpr;
       if (arg instanceof pexprs.Seq) {
         factors = factors.concat(arg.factors);
       } else {
@@ -98,35 +99,35 @@ export default class Builder {
   }
 
   star(expr:string | PExpr):pexprs.Star {
-    expr = expr instanceof PExpr ? expr : this.fromRecipe(expr);
+    expr = expr instanceof PExpr ? expr : this.fromRecipe(expr) as PExpr;
     return new pexprs.Star(expr);
   }
 
   plus(expr:string | PExpr):pexprs.Plus {
-    expr = expr instanceof PExpr ? expr : this.fromRecipe(expr);
+    expr = expr instanceof PExpr ? expr : this.fromRecipe(expr) as PExpr;
     return new pexprs.Plus(expr);
   }
 
   opt(expr:string | PExpr):pexprs.Opt {
-    expr = expr instanceof PExpr ? expr : this.fromRecipe(expr);
+    expr = expr instanceof PExpr ? expr : this.fromRecipe(expr) as PExpr;
     return new pexprs.Opt(expr);
   }
 
   not(expr:string | PExpr):pexprs.Not {
-    expr = expr instanceof PExpr ? expr : this.fromRecipe(expr);
+    expr = expr instanceof PExpr ? expr : this.fromRecipe(expr) as PExpr;
     return new pexprs.Not(expr);
   }
 
   lookahead(expr:string | PExpr) {
     if (!(expr instanceof PExpr)) {
-      expr = this.fromRecipe(expr);
+      expr = this.fromRecipe(expr) as PExpr;
     }
     return new pexprs.Lookahead(expr);
   }
 
   lex(expr:string | PExpr):pexprs.Lex {
     if (!(expr instanceof PExpr)) {
-      expr = this.fromRecipe(expr);
+      expr = this.fromRecipe(expr) as PExpr;
     }
     return new pexprs.Lex(expr);
   }
@@ -147,17 +148,17 @@ export default class Builder {
     return new pexprs.Splice(
       this.currentDecl.superGrammar,
       this.currentRuleName,
-      beforeTerms.map(term => this.fromRecipe(term)),
-      afterTerms.map(term => this.fromRecipe(term))
+      beforeTerms.map(term => this.fromRecipe(term)) as PExpr[],
+      afterTerms.map(term => this.fromRecipe(term)) as PExpr[]
     );
   }
 
-  fromRecipe(recipe:string[]|any):PExpr {
+  fromRecipe(recipe:string[]|any):Grammar|PExpr {
     // the meta-info of 'grammar' is processed in Builder.grammar
     const args = recipe[0] === 'grammar' ? recipe.slice(1) : recipe.slice(2);
     const result = this[recipe[0]](...args);    // !!! SOLVE: bad dispatch 
 
-    const metaInfo = recipe[1];
+    const metaInfo:{sourceInterval:[number,number]} = recipe[1];
     if (metaInfo) {
       if (metaInfo.sourceInterval && this.currentDecl) {
         result.withSource(this.currentDecl.sourceInterval(...metaInfo.sourceInterval));

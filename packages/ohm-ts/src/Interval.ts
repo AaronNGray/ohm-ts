@@ -41,7 +41,7 @@ export default class Interval {
   }
 
   coverageWith(...intervals:Interval[]) {
-    return Interval.coverage(...intervals, this);   // ??? bug in ohm-js or TypeScript incompatibility or static verses function issue ?
+    return Interval.coverage(intervals[0], ...[...intervals.slice(1), this]);   // ??? bug in ohm-js or TypeScript incompatibility or static verses function issue ?
   }
 
   collapsedLeft() {

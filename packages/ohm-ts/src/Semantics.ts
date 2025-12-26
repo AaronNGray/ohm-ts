@@ -3,6 +3,7 @@ import Interval from './Interval.js';
 import Node, {IterationNode} from './nodes.js';
 import MatchResult from './MatchResult.js';
 import Grammar from './Grammar.js';
+import {Recipe, Formals} from './pexprs-main.js';
 import * as common from './common.js';
 import {assert} from './common.js';
 import * as errors from './errors.js';
@@ -15,6 +16,8 @@ import * as util from './util.js';
 
 const globalActionStack = [];
 
+type ActionDict = { [key:string]:Function };
+
 const hasOwnProperty = (x:object, prop:string) => Object.prototype.hasOwnProperty.call(x, prop);
 
 // ----------------- Wrappers -----------------
@@ -26,7 +29,7 @@ const hasOwnProperty = (x:object, prop:string) => Object.prototype.hasOwnPropert
 // used to cache the wrapper instances that are created for its child nodes. Setting these instance
 // variables is the responsibility of the constructor of each Semantics-specific subclass of
 // `Wrapper`.
-class Wrapper {
+export class Wrapper {
   constructor(node:Node, sourceInterval:Interval, baseInterval:Interval) {
     this._node = node;
     this.source = sourceInterval;
@@ -136,7 +139,7 @@ class Wrapper {
   }
 
   // Returns an array containing the children of this CST node.
-  get children():Node[] {
+  get children():Wrapper[] {
     return this._children();
   }
 
@@ -156,6 +159,23 @@ class Wrapper {
   }
 }
 
+//type WrapperFn = (matchResult:MatchResult) => Semantics;
+
+type Proxy = {
+  (matchResult:MatchResult):Wrapper;
+  addOperation(signature:string, actionDict:ActionDict):Proxy;
+  extendOperation(name:string, actionDict:ActionDict):Proxy;
+  addAttribute(name:string, actionDict:ActionDict):Proxy;
+  extendAttribute(name:string, actionDict:ActionDict):Proxy;
+  _getActionDict(operationOrAttributeName:string):ActionDict
+  _remove(operationOrAttributeName:string):Semantics;
+  getOperationNames():string[];
+  getAttributeNames():string[];
+  getGrammar():Grammar;
+  toRecipe(semanticsOnly:boolean):string;
+  toString():string;
+  _getSemantics():Semantics;
+}
 
 // ----------------- Semantics -----------------
 
@@ -165,6 +185,9 @@ class Wrapper {
 // recursive. This constructor should not be called directly except from
 // `Semantics.createSemantics`. The normal ways to create a Semantics, given a grammar 'g', are
 // `g.createSemantics()` and `g.extendSemantics(parentSemantics)`.
+
+type SemanticDefaultFunction = { (matchResult:MatchResult):Wrapper; }
+
 export default class Semantics {
   constructor(grammar:Grammar, superSemantics:Semantics) {
     const self = this;
@@ -228,12 +251,12 @@ export default class Semantics {
       grammar,
       optSuperSemantics !== undefined
         ? optSuperSemantics
-        : Semantics.BuiltInSemantics._getSemantics()
+        : Semantics.BuiltInSemantics._getSemantics()    // Proxy .v. Semantics
     );
 
     // To enable clients to invoke a semantics like a function, return a function that acts as a proxy
     // for `s`, which is the real `Semantics` instance.
-    const proxy = function ASemantics(matchResult:MatchResult):Semantics {
+    const proxy:Proxy = function ASemantics(matchResult:MatchResult):Wrapper {
       if (!(matchResult instanceof MatchResult)) {
         throw new TypeError(
           'Semantics expected a MatchResult, but got ' +
@@ -259,23 +282,23 @@ export default class Semantics {
     };
 
     // Forward public methods from the proxy to the semantics instance.
-    proxy.addOperation = function (signature, actionDict) {
+    proxy.addOperation = function (signature:string, actionDict:ActionDict):Proxy {
       s.addOperationOrAttribute('operation', signature, actionDict);
       return proxy;
     };
-    proxy.extendOperation = function (name, actionDict) {
+    proxy.extendOperation = function (name:string, actionDict:ActionDict):Proxy {
       s.extendOperationOrAttribute('operation', name, actionDict);
       return proxy;
     };
-    proxy.addAttribute = function (name, actionDict) {
+    proxy.addAttribute = function (name:string, actionDict:ActionDict):Proxy {
       s.addOperationOrAttribute('attribute', name, actionDict);
       return proxy;
     };
-    proxy.extendAttribute = function (name, actionDict) {
+    proxy.extendAttribute = function (name:string, actionDict:ActionDict):Proxy {
       s.extendOperationOrAttribute('attribute', name, actionDict);
       return proxy;
     };
-    proxy._getActionDict = function (operationOrAttributeName:string) {
+    proxy._getActionDict = function (operationOrAttributeName:string):ActionDict {
       const action =
         s.operations[operationOrAttributeName] || s.attributes[operationOrAttributeName];
       if (!action) {
@@ -290,7 +313,7 @@ export default class Semantics {
       }
       return action.actionDict;
     };
-    proxy._remove = function (operationOrAttributeName:AttributeName|Operation) {
+    proxy._remove = function (operationOrAttributeName:string):Semantics {
       let semantic;
       if (operationOrAttributeName in s.operations) {
         semantic = s.operations[operationOrAttributeName];
@@ -302,32 +325,35 @@ export default class Semantics {
       delete s.Wrapper.prototype[operationOrAttributeName];
       return semantic;
     };
-    proxy.getOperationNames = function () {
+    proxy.getOperationNames = function():string[]  {  // ??? keyof[]
       return Object.keys(s.operations);
     };
-    proxy.getAttributeNames = function () {
+    proxy.getAttributeNames = function():string[] {
       return Object.keys(s.attributes);
     };
-    proxy.getGrammar = function () {
+    proxy.getGrammar = function():Grammar {
       return s.grammar;
     };
-    proxy.toRecipe = function (semanticsOnly:boolean) {
+    proxy.toRecipe = function (semanticsOnly:boolean):string {
       return s.toRecipe(semanticsOnly);
     };
 
     // Make the proxy's toString() work.
-    proxy.toString = s.toString.bind(s);
+    proxy.toString  = function () {
+      return s.toString.bind(s);
+    }
 
     // Returns the semantics for the proxy.
     proxy._getSemantics = function () {
       return s;
     };
 
-    return proxy;
+    return proxy as unknown as Semantics;
+//    return proxy as unknown as Semantics;
   }
 
   static prototypeGrammar:Grammar;
-  static prototypeGrammarSemantics:Semantics;
+  static prototypeGrammarSemantics:(r:MatchResult) => Semantics;
 
   static actions = {
     empty() {
@@ -633,7 +659,7 @@ function parseSignature(signature:string, type:string) {
   return Semantics.prototypeGrammarSemantics(r).parse();    // Semantics is not callable, and no parse() method.
 }
 
-function newDefaultAction(type, name, doIt) {
+function newDefaultAction(type:string, name:string, doIt) {
   return function (...children) {
     const thisThing = this._semantics.operations[name] || this._semantics.attributes[name];
     const args = thisThing.formals.map(formal => this.args[formal]);
@@ -662,7 +688,7 @@ function newDefaultAction(type, name, doIt) {
 // `actionDict`. See `Operation.prototype.execute` for details of how a CST node's matching semantic
 // action is found.
 class Operation {
-  constructor(name:string, formals, actionDict, builtInDefault) {
+  constructor(name:string, formals:Formals, actionDict:ActionDict, builtInDefault?:any) {
     this.name = name;
     this.formals = formals;
     this.actionDict = actionDict;
@@ -670,6 +696,10 @@ class Operation {
   }
 
   name:string;
+  typeName:string = 'operation';
+  formals:Formals;
+  actionDict:ActionDict;
+  builtInDefault
 
   checkActionDict(grammar:Grammar) {
     grammar._checkTopDownActionDict(this.typeName, this.name, this.actionDict);
@@ -716,7 +746,7 @@ Operation.prototype.typeName = 'operation';
 // Attributes are Operations whose results are memoized. This means that, for any given semantics,
 // the semantic action for a CST node will be invoked no more than once.
 class Attribute extends Operation {
-  constructor(name:string, actionDict, builtInDefault) {
+  constructor(name:string, actionDict:ActionDict, builtInDefault?:any) {
     super(name, [], actionDict, builtInDefault);
   }
 

@@ -3,6 +3,7 @@ import * as util from './util.js';
 import Interval from './Interval.js';
 import Matcher from './Matcher.js';
 import PExpr from './pexprs-main.js';
+import * as pexprs from './pexprs.js';
 
 // --------------------------------------------------------------------
 // Private stuff
@@ -51,6 +52,8 @@ export default class MatchResult {
   _cstOffset;
   _rightmostFailurePosition;
   _rightmostFailures;
+  message?:string;
+  shortMessage?:string;
 
   succeeded() {
     return !!this._cst;
@@ -67,11 +70,11 @@ export default class MatchResult {
   getRightmostFailures() {
     if (!this._rightmostFailures) {
       this.matcher.setInput(this.input);
-      const matchResultWithFailures = this.matcher._match(this.startExpr, {
+      const matchResultWithFailures = this.matcher._match((this.startExpr as pexprs.Seq), {
         tracing: false,
         positionToRecordFailures: this.getRightmostFailurePosition(),
       });
-      this._rightmostFailures = matchResultWithFailures.getRightmostFailures();
+      this._rightmostFailures = (matchResultWithFailures as MatchResult).getRightmostFailures();
     }
     return this._rightmostFailures;
   }
