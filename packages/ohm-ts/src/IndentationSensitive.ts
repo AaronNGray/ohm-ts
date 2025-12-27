@@ -1,4 +1,4 @@
-import BuiltInRules from '../dist/built-in-rules.js';
+import BuiltInRules from './bootstrap/built-in-rules.js';
 import Builder from '../src/Builder.js';
 import Failure from '../src/Failure.js';
 import {TerminalNode} from '../src/nodes.js';

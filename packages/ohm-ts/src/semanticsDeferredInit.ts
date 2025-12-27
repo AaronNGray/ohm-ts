@@ -1,4 +1,4 @@
-import operationsAndAttributesGrammar from '../dist/operations-and-attributes.js';
+import operationsAndAttributesGrammar from './bootstrap/operations-and-attributes.js';
 import Grammar from './Grammar.js';
 import Semantics from './Semantics.js';
 import type Formals from './pexprs-main.js';

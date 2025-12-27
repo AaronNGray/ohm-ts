@@ -1,5 +1,5 @@
 import {Buffer} from 'node:buffer';
-import ohmGrammar from '../dist/ohm-grammar.js';
+import ohmGrammar from './bootstrap/ohm-grammar.js';
 import {buildGrammar, Namespace} from './buildGrammar.js';
 import * as common from './common.js';
 import * as errors from './errors.js';

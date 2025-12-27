@@ -1,6 +1,6 @@
-import ohmGrammar from '../dist/ohm-grammar.js';
+import ohmGrammar from './bootstrap/ohm-grammar.js';
 import Builder from './Builder.js';
-import MatchResult from './Matcher.js';
+import MatchResult from './MatchResult.js';
 import Matcher from './Matcher.js';
 import * as common from './common.js';
 import * as errors from './errors.js';
