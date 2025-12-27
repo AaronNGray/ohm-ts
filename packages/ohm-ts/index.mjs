@@ -1,1 +1,1 @@
-export * from './src/main.js';
+export * from './dist/src/main.js';

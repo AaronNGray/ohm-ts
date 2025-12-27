@@ -1,4 +1,4 @@
-import {assert} from '../src/common.js';
+import {assert} from '../dist/src/common.js';
 
 // Helpers
 
